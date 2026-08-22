@@ -72,7 +72,13 @@ async def scroll_hasta_estabilizar(
 ) -> None:
     """Hace scroll hacia abajo repetidamente hasta que el numero de elementos
     que casan `selector_partido` deja de crecer. Pensado para paginas con
-    carga perezosa (Bwin, Winamax)."""
+    carga perezosa por scroll puro (listas virtualizadas tipo Winamax).
+
+    NO sirve para paginas con un boton explicito de "cargar mas" (ver
+    `hacer_click_hasta_agotar` mas abajo) — verificado en vivo que en
+    Bwin, ni siquiera haciendo scroll en pasos pequeños con el boton
+    "Más eventos" pasando por la pantalla, se carga nada nuevo: hace
+    falta pulsarlo de verdad."""
     sin_cambios = 0
     anterior = -1
     for _ in range(max_scrolls_total):
@@ -86,6 +92,36 @@ async def scroll_hasta_estabilizar(
         anterior = actual
         await page.mouse.wheel(0, 2600)
         await page.wait_for_timeout(pausa_ms)
+
+
+async def hacer_click_hasta_agotar(
+    page: Page, selector_boton: str, max_clicks: int = 100, pausa_ms: int = 700
+) -> None:
+    """Para paginas con un boton tipo "cargar mas"/"Más eventos" que hay
+    que pulsar de verdad — bug real detectado en produccion en Bwin: con
+    la pagina de futbol de "hoy" solo se veian 30-50 partidos cuando en
+    realidad habia 422 (confirmado por el usuario contando manualmente
+    con Ctrl+F). El boton existe y es visible desde el principio, pero
+    ni scrollear hasta el fondo ni hacerlo en pasos pequeños con el boton
+    a la vista carga nada — hay que hacerle click, y cada click revela
+    un lote nuevo (y normalmente empuja el boton mas abajo, para el
+    siguiente click). Se para sola cuando el boton deja de existir (se
+    acabaron los resultados) o al llegar a `max_clicks` como red de
+    seguridad."""
+    for _ in range(max_clicks):
+        boton = page.locator(selector_boton).first
+        if await boton.count() == 0:
+            break
+        try:
+            await boton.scroll_into_view_if_needed(timeout=5000)
+            await page.wait_for_timeout(200)
+            await boton.click(timeout=5000)
+            await page.wait_for_timeout(pausa_ms)
+        except Exception:
+            # El boton pudo desaparecer justo entre el count() y el click
+            # (se acabaron los resultados a mitad de un ciclo) — no es un
+            # fallo real, simplemente ya no hay mas que cargar.
+            break
 
 
 def agrupar_por_liga(
