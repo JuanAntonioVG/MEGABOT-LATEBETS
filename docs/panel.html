@@ -442,16 +442,13 @@
     return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  function formatearFecha(iso) {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (isNaN(d)) return iso;
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    if (d.toDateString() === new Date().toDateString()) return `${hh}:${mm}`;
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mo = String(d.getMonth() + 1).padStart(2, "0");
-    return `${dd}/${mo} ${hh}:${mm}`;
+  // El servidor ya manda "t"/"i" compactadas ("22/08 21:27") para no
+  // pagar el peso de un ISO completo con microsegundos en cada entrada
+  // — ver telegram_bot/miniapp.py:_fecha_compacta. Aqui no hay que
+  // reformatear nada, solo mostrarlas.
+
+  function nombreDeporte(id) {
+    return id.charAt(0).toUpperCase() + id.slice(1);
   }
 
   // ---------- tema nativo de Telegram ----------
@@ -469,7 +466,7 @@
 
   // ---------- estado ----------
   const params = new URLSearchParams(location.search);
-  let estado = { c: [], p: 2, h: "00:00", v: false, pp: false, al: { pend: [], apr: [] }, r: [], ej: [] };
+  let estado = { c: [], p: 2, h: "00:00", v: false, pp: false, al: { pend: [], apr: [] }, r: [], rm: false, ej: [] };
   try {
     if (params.get('estado')) {
       estado = JSON.parse(decodeURIComponent(escape(atob(params.get('estado').replace(/-/g, '+').replace(/_/g, '/')))));
@@ -549,7 +546,7 @@
 
       const label = document.createElement('div');
       label.className = 'label';
-      label.innerHTML = `<span class="emoji">${dep.e}</span> ${dep.n}`;
+      label.innerHTML = `<span class="emoji">${dep.e}</span> ${nombreDeporte(dep.id)}`;
 
       const sw = document.createElement('label');
       sw.className = 'switch';
@@ -624,9 +621,16 @@
           <div class="report-side-label">🏠 ${escapeHtml(d.cs)} · ${escapeHtml(d.lc)}</div>
           <div><span class="report-time">${escapeHtml(d.hc)}</span><span class="report-teams">${escapeHtml(d.ec[0])} vs ${escapeHtml(d.ec[1])}</span></div>
         </div>
-        <div class="report-fecha">${formatearFecha(d.t)}</div>`;
+        <div class="report-fecha">${escapeHtml(d.t)}</div>`;
       contReportes.appendChild(card);
     });
+  }
+  if (estado.rm) {
+    const aviso = document.createElement('div');
+    aviso.className = 'hint';
+    aviso.style.padding = '2px 4px 0';
+    aviso.textContent = `Mostrando las últimas ${estado.r.length}. Puede haber más en el historial.`;
+    contReportes.after(aviso);
   }
 
   // ---------- render ejecuciones ----------
@@ -639,7 +643,7 @@
       row.className = 'exec-row';
       row.innerHTML = `
         <div>
-          <div class="exec-fecha">${formatearFecha(e.i)}</div>
+          <div class="exec-fecha">${escapeHtml(e.i)}</div>
           <div class="hint" style="padding:0;">${escapeHtml(e.h)}</div>
         </div>
         <div class="exec-stats">

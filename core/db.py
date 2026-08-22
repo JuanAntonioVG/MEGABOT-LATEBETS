@@ -194,16 +194,23 @@ def obtener_alias_aprobados(ruta: Path) -> dict[str, str]:
         return {f["variante"]: f["canonico"] for f in filas}
 
 
-def listar_alias_pendientes(ruta: Path) -> list[sqlite3.Row]:
+def listar_alias_pendientes(ruta: Path, limite: int = 500) -> list[sqlite3.Row]:
     with _conectar(ruta) as con:
-        return con.execute("SELECT * FROM alias_equipos WHERE aprobado = 0 ORDER BY creado_en").fetchall()
+        return con.execute(
+            "SELECT * FROM alias_equipos WHERE aprobado = 0 ORDER BY creado_en LIMIT ?", (limite,)
+        ).fetchall()
 
 
-def listar_alias_aprobados(ruta: Path, limite: int = 200) -> list[sqlite3.Row]:
+def listar_alias_aprobados(ruta: Path, limite: int = 500) -> list[sqlite3.Row]:
     """A diferencia de `obtener_alias_aprobados` (pensada para el matcher:
     solo variante->canonico), esta devuelve la fila completa — incluido
     `id`, que hace falta para poder borrar un alias concreto desde el
-    panel."""
+    panel.
+
+    El limite por defecto (500) es solo una cota de seguridad para no
+    escanear una tabla sin fin — quien necesite embeber esto en la URL
+    de la Mini App (telegram_bot/miniapp.py) pasa un limite MUCHO mas
+    bajo explicitamente, esto no es ese limite."""
     with _conectar(ruta) as con:
         return con.execute(
             "SELECT * FROM alias_equipos WHERE aprobado = 1 ORDER BY creado_en DESC LIMIT ?", (limite,)

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import datetime
 from pathlib import Path
 
 from config.catalogo_casas import CATALOGO_CASAS, EMOJIS_DEPORTE
@@ -23,18 +24,58 @@ from core import db
 # GitHub Pages del repo — ver README para como activarlo (Settings > Pages).
 URL_BASE_PANEL = "https://juanantoniovg.github.io/MEGABOT-LATEBETS/panel.html"
 
-# Cuantas discrepancias/ejecuciones recientes se embeben en la URL. La
-# pagina es estatica y no puede pedir "un poco mas" bajo demanda, asi
-# que el limite se fija aqui — de sobra para revisar una noche normal,
-# acotado para que la URL no crezca sin control con meses de historial.
-LIMITE_REPORTES = 20
-LIMITE_EJECUCIONES = 6
+# Cuantas discrepancias/ejecuciones/alias recientes se embeben en la URL.
+# La pagina es estatica y no puede pedir "un poco mas" bajo demanda, asi
+# que el limite se fija aqui.
+#
+# IMPORTANTE — esto choco de verdad contra un limite real: GitHub Pages
+# (Fastly por debajo) devuelve "414 URI Too Long" bastante antes de lo
+# que parece razonable a ojo. Con LIMITE_REPORTES=20 sin acortar nada,
+# la URL real llego a 9323 caracteres (medido contra la base de datos
+# real del proyecto) y ya no cargaba.
+#
+# Los numeros de aqui abajo (mas recortar los textos largos y compactar
+# las fechas) NO son una estimacion — se midieron dos veces: contra la
+# base de datos real del proyecto (~3850 caracteres) y contra un caso
+# forzado a proposito (alias al limite, con nombres largos truncados al
+# maximo en todos los campos: ~5570 caracteres). Los dos quedan bastante
+# por debajo de los 9323 que rompieron, con margen de sobra por si el
+# limite real de Fastly resulta ser mas bajo de lo esperado.
+LIMITE_REPORTES = 5
+LIMITE_EJECUCIONES = 5
+LIMITE_ALIAS = 8
+
+# Cualquier nombre de equipo/liga/alias por encima de esto se recorta con
+# "…" al embeberlo en la URL — proteccion dura contra el mismo problema
+# de arriba si algun dia una casa devuelve nombres inusualmente largos
+# (o alguien escribe un alias manual larguisimo). La base de datos
+# guarda el texto completo tal cual; esto solo afecta a lo que se ve en
+# el panel.
+LIMITE_TEXTO_REPORTE = 22
 
 # Acciones que el panel puede pedir junto con el guardado. Se procesan
 # en telegram_bot/bot.py (no aqui) porque necesitan el Bot/Application
 # de Telegram para avisar cuando terminen — esta funcion solo valida
 # cuales se pidieron y las devuelve.
 ACCIONES_VALIDAS = {"ejecutar_ciclo", "revisar_ollama"}
+
+
+def _recortar(texto: str | None, limite: int = LIMITE_TEXTO_REPORTE) -> str:
+    texto = texto or ""
+    return texto if len(texto) <= limite else texto[: limite - 1] + "…"
+
+
+def _fecha_compacta(iso: str | None) -> str:
+    """ "2026-08-22T21:27:34.688943" -> "22/08 21:27". Mandar la fecha
+    entera con microsegundos cuesta ~26 bytes por entrada cuando lo unico
+    que hace falta para leerla de un vistazo son 11."""
+    if not iso:
+        return ""
+    try:
+        d = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso[:16]
+    return d.strftime("%d/%m %H:%M")
 
 
 def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
@@ -45,12 +86,15 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
     en vez de en la pestaña por defecto) — ver docs/panel.html, que lee
     `?tab=` al arrancar.
     """
+    # Los deportes son un catalogo pequeño y estable (config/catalogo_casas.py)
+    # — el nombre visible ("Baloncesto") lo deriva el propio panel.html a
+    # partir del id en vez de mandarlo repetido en cada casa; con ~35
+    # combinaciones casa+deporte ese campo de mas pesaba lo suyo.
     casas = []
     for casa in CATALOGO_CASAS.values():
         deportes = [
             {
                 "id": deporte,
-                "n": deporte.capitalize(),
                 "e": EMOJIS_DEPORTE.get(deporte, "❓"),
                 "a": db.esta_activo(ruta_db, casa.id, deporte),
             }
@@ -59,34 +103,36 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
         casas.append({"id": casa.id, "n": casa.nombre_legible, "d": deportes})
 
     alias_pendientes = [
-        {"id": f["id"], "va": f["variante"], "ca": f["canonico"]} for f in db.listar_alias_pendientes(ruta_db)
+        {"id": f["id"], "va": _recortar(f["variante"]), "ca": _recortar(f["canonico"])}
+        for f in db.listar_alias_pendientes(ruta_db, limite=LIMITE_ALIAS)
     ]
     alias_aprobados = [
-        {"id": f["id"], "va": f["variante"], "ca": f["canonico"], "fu": f["fuente"]}
-        for f in db.listar_alias_aprobados(ruta_db)
+        {"id": f["id"], "va": _recortar(f["variante"]), "ca": _recortar(f["canonico"]), "fu": f["fuente"]}
+        for f in db.listar_alias_aprobados(ruta_db, limite=LIMITE_ALIAS)
     ]
 
+    filas_reportes = db.listar_discrepancias_recientes(ruta_db, limite=LIMITE_REPORTES)
     reportes = [
         {
-            "cs": f["casa_nombre"],
+            "cs": _recortar(f["casa_nombre"]),
             "dp": f["deporte"],
-            "lc": f["liga"] or "Desconocida",
-            "lf": f["liga_fs"] or "Desconocida",
+            "lc": _recortar(f["liga"] or "Desconocida"),
+            "lf": _recortar(f["liga_fs"] or "Desconocida"),
             "hc": f["detalle_casa"],
             "hf": f["detalle_fs"],
-            "ec": [f["equipo_local_casa"], f["equipo_visitante_casa"]],
-            "ef": [f["equipo_local_fs"], f["equipo_visitante_fs"]],
+            "ec": [_recortar(f["equipo_local_casa"]), _recortar(f["equipo_visitante_casa"])],
+            "ef": [_recortar(f["equipo_local_fs"]), _recortar(f["equipo_visitante_fs"])],
             "s": f["similitud"],
             "p": f["prioridad"],
-            "t": f["creado_en"],
+            "t": _fecha_compacta(f["creado_en"]),
         }
-        for f in db.listar_discrepancias_recientes(ruta_db, limite=LIMITE_REPORTES)
+        for f in filas_reportes
     ]
 
     ejecuciones = [
         {
             "h": f["host"] or "?",
-            "i": f["iniciado_en"],
+            "i": _fecha_compacta(f["iniciado_en"]),
             "d": f["duracion_segundos"] or 0,
             "pt": f["total_partidos"] or 0,
             "dc": f["total_discrepancias"] or 0,
@@ -103,6 +149,10 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
         "pp": db.get_setting_bool(ruta_db, "programacion_pausada", False),
         "al": {"pend": alias_pendientes, "apr": alias_aprobados},
         "r": reportes,
+        # Con el limite tan ajustado, tiene que quedar claro cuando se
+        # esta viendo solo una parte — nada se pierde en la base de
+        # datos, solo en esta vista compacta.
+        "rm": len(filas_reportes) >= LIMITE_REPORTES,
         "ej": ejecuciones,
     }
     crudo = json.dumps(estado, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

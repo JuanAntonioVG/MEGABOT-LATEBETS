@@ -55,6 +55,19 @@ def test_alias_aprobar_y_rechazar(tmp_path):
     assert db.listar_alias_pendientes(ruta) == []
 
 
+def test_alias_listar_pendientes_y_aprobados_respetan_limite(tmp_path):
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    for i in range(5):
+        db.guardar_alias(ruta, f"variante {i}", f"canonico {i}", fuente="ollama", aprobado=False)
+        db.guardar_alias(ruta, f"variante apr {i}", f"canonico apr {i}", fuente="manual", aprobado=True)
+
+    assert len(db.listar_alias_pendientes(ruta)) == 5  # limite por defecto (500) no molesta con pocos datos
+    assert len(db.listar_alias_pendientes(ruta, limite=2)) == 2
+    assert len(db.listar_alias_aprobados(ruta, limite=3)) == 3
+
+
 def test_alias_listar_aprobados_y_eliminar(tmp_path):
     ruta = tmp_path / "test.sqlite3"
     db.inicializar_db(ruta)

@@ -3,7 +3,14 @@ import json
 
 from core import db
 from core.models import Discrepancia
-from telegram_bot.miniapp import URL_BASE_PANEL, aplicar_cambios, construir_url_panel
+from telegram_bot.miniapp import (
+    LIMITE_ALIAS,
+    LIMITE_REPORTES,
+    LIMITE_TEXTO_REPORTE,
+    URL_BASE_PANEL,
+    aplicar_cambios,
+    construir_url_panel,
+)
 
 
 def test_construir_url_panel_incluye_estado_valido(tmp_path):
@@ -163,6 +170,144 @@ def test_aplicar_cambios_acciones_validas_se_devuelven_y_las_invalidas_no(tmp_pa
 
     assert acciones == ["ejecutar_ciclo"]
     assert "ciclo manual lanzado" in resumen
+
+
+def test_construir_url_panel_recorta_textos_largos(tmp_path):
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    nombre_largo = "Real Club Deportivo Muy Larguísimo De Verdad"
+    assert len(nombre_largo) > LIMITE_TEXTO_REPORTE
+
+    discrepancia = Discrepancia(
+        casa_id="bwin",
+        casa_nombre="Bwin",
+        deporte="futbol",
+        liga=nombre_largo,
+        equipo_local_casa=nombre_largo,
+        equipo_visitante_casa="B",
+        detalle_casa="21:00",
+        equipo_local_fs="A",
+        equipo_visitante_fs="B",
+        detalle_fs="19:00",
+        similitud=90.0,
+        prioridad="alta",
+    )
+    db.guardar_discrepancia(ruta, discrepancia)
+
+    estado = json.loads(base64.urlsafe_b64decode(construir_url_panel(ruta).split("estado=", 1)[1]))
+    reporte = estado["r"][0]
+    assert len(reporte["lc"]) <= LIMITE_TEXTO_REPORTE
+    assert len(reporte["ec"][0]) <= LIMITE_TEXTO_REPORTE
+    assert reporte["lc"].endswith("…")  # se ve que esta cortado, no parece el nombre completo
+
+
+def test_construir_url_panel_marca_cuando_hay_mas_reportes_de_los_mostrados(tmp_path):
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    def _discrepancia(i: int) -> Discrepancia:
+        return Discrepancia(
+            casa_id="bwin",
+            casa_nombre="Bwin",
+            deporte="futbol",
+            liga="LaLiga",
+            equipo_local_casa=f"Equipo {i}",
+            equipo_visitante_casa="B",
+            detalle_casa="21:00",
+            equipo_local_fs="A",
+            equipo_visitante_fs="B",
+            detalle_fs="19:00",
+            similitud=90.0,
+            prioridad="alta",
+        )
+
+    for i in range(LIMITE_REPORTES - 1):
+        db.guardar_discrepancia(ruta, _discrepancia(i))
+    estado = json.loads(base64.urlsafe_b64decode(construir_url_panel(ruta).split("estado=", 1)[1]))
+    assert estado["rm"] is False  # por debajo del limite: seguro que no falta ninguna
+
+    # Al llegar exactamente al limite ya no se puede distinguir "hay
+    # justo tantas" de "hay mas" sin una consulta aparte — se avisa por
+    # el mismo motivo que el resto del proyecto prefiere falsos
+    # positivos a esconder algo: es mejor un aviso de mas que de menos.
+    db.guardar_discrepancia(ruta, _discrepancia(LIMITE_REPORTES - 1))
+    estado = json.loads(base64.urlsafe_b64decode(construir_url_panel(ruta).split("estado=", 1)[1]))
+    assert len(estado["r"]) == LIMITE_REPORTES  # la vista sigue acotada
+    assert estado["rm"] is True
+
+
+def test_construir_url_panel_respeta_limite_alias(tmp_path):
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    for i in range(LIMITE_ALIAS + 5):
+        db.guardar_alias(ruta, f"variante pendiente {i}", f"canonico {i}", fuente="ollama", aprobado=False)
+        db.guardar_alias(ruta, f"variante aprobada {i}", f"canonico {i}", fuente="manual", aprobado=True)
+
+    estado = json.loads(base64.urlsafe_b64decode(construir_url_panel(ruta).split("estado=", 1)[1]))
+    assert len(estado["al"]["pend"]) == LIMITE_ALIAS
+    assert len(estado["al"]["apr"]) == LIMITE_ALIAS
+
+
+def test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso(tmp_path):
+    """Regresion directa del bug real: con LIMITE_REPORTES=20 y sin
+    recortar texto, la URL llego a 9323 caracteres contra la base de
+    datos real del proyecto y GitHub Pages la rechazo con
+    "414 URI Too Long". Este test satura deliberadamente TODAS las
+    listas (reportes, ejecuciones, alias) con textos largos para que
+    una regresion futura (subir un limite, quitar un _recortar) no
+    pueda colarse en silencio."""
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    nombre_largo = "Real Club Deportivo Muy Larguísimo De Verdad " * 2
+
+    for _i in range(LIMITE_REPORTES + 5):
+        db.guardar_discrepancia(
+            ruta,
+            Discrepancia(
+                casa_id="bwin",
+                casa_nombre=nombre_largo,
+                deporte="futbol",
+                liga=nombre_largo,
+                liga_fs=nombre_largo,
+                equipo_local_casa=nombre_largo,
+                equipo_visitante_casa=nombre_largo,
+                detalle_casa="21:00",
+                equipo_local_fs=nombre_largo,
+                equipo_visitante_fs=nombre_largo,
+                detalle_fs="19:00",
+                similitud=90.0,
+                prioridad="alta",
+            ),
+        )
+    for _i in range(10):
+        eid = db.crear_ejecucion(ruta, host="RASPBERRYPI-MUY-LARGO" * 2, paralelismo=2)
+        db.cerrar_ejecucion(
+            ruta,
+            eid,
+            total_partidos=999,
+            total_discrepancias=99,
+            errores=["error"] * 5,
+            duracion_segundos=999.9,
+        )
+    for i in range(LIMITE_ALIAS + 5):
+        db.guardar_alias(
+            ruta, f"{nombre_largo} {i}", f"{nombre_largo} canonico {i}", fuente="ollama", aprobado=False
+        )
+        db.guardar_alias(
+            ruta,
+            f"{nombre_largo} apr {i}",
+            f"{nombre_largo} canonico apr {i}",
+            fuente="manual",
+            aprobado=True,
+        )
+
+    url = construir_url_panel(ruta, tab="reportes")
+    # Margen amplio bajo los 9323 que rompieron de verdad — ver el
+    # comentario junto a LIMITE_REPORTES en telegram_bot/miniapp.py.
+    assert len(url) < 7000, f"URL de {len(url)} caracteres — demasiado cerca del limite real de GitHub Pages"
 
 
 def test_aplicar_cambios_sin_nada_no_rompe(tmp_path):
