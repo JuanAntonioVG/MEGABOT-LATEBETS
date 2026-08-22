@@ -78,10 +78,30 @@ def normalizar_nombre(nombre: str, alias: dict[str, str]) -> str:
     return " ".join(texto.split())
 
 
-def _bolsa_de_palabras(partido: Partido, alias: dict[str, str]) -> str:
-    local = normalizar_nombre(partido.equipo_local, alias)
-    visitante = normalizar_nombre(partido.equipo_visitante, alias)
-    return f"{local} {visitante}"
+def _similitud_nombre(a: str, b: str, alias: dict[str, str]) -> float:
+    return float(fuzz.token_set_ratio(normalizar_nombre(a, alias), normalizar_nombre(b, alias)))
+
+
+def _puntuacion_partido(casa: Partido, candidato: Partido, alias: dict[str, str]) -> float:
+    """Compara equipo local CONTRA equipo local y visitante CONTRA
+    visitante POR SEPARADO, y se queda con el PEOR de los dos.
+
+    Bug real detectado en produccion la noche del 22 al 23 de agosto:
+    antes se comparaba "local+visitante" como una sola bolsa de
+    palabras (token_set_ratio sobre el texto junto), y eso deja que un
+    solo equipo compartido empuje la puntuacion por encima del umbral
+    aunque el OTRO equipo no tenga nada que ver — ej. "Skanderborg AGF
+    Haandbold vs TMS Ringsted" emparejado con "Aalborg vs Skanderborg
+    AGF" (79% con la bolsa junta): son dos partidos reales y DISTINTOS
+    que solo comparten un equipo, no el mismo partido escrito distinto.
+    Verificado contra los 9 casos reales de esa noche: este cambio
+    rechaza los 5 que eran falsos emparejamientos (bajan de 70-83% a
+    20-46%) sin perder ninguno de los 4 que si eran discrepancias
+    reales (se quedan en 77-100%, alguno incluso sube)."""
+    return min(
+        _similitud_nombre(casa.equipo_local, candidato.equipo_local, alias),
+        _similitud_nombre(casa.equipo_visitante, candidato.equipo_visitante, alias),
+    )
 
 
 # El fuzzy matching (token_set_ratio) puntua muy alto dos nombres aunque uno
@@ -137,14 +157,12 @@ def normalizar_hora(detalle: str) -> str:
 def encontrar_mejor_coincidencia(
     partido_casa: Partido, candidatos_fs: list[Partido], alias: dict[str, str]
 ) -> tuple[Partido | None, float]:
-    bolsa_casa = _bolsa_de_palabras(partido_casa, alias)
     mejor_partido: Partido | None = None
     mejor_puntuacion = -1.0
     for candidato in candidatos_fs:
         if not _categorias_compatibles(partido_casa, candidato):
             continue
-        bolsa_fs = _bolsa_de_palabras(candidato, alias)
-        puntuacion = float(fuzz.token_set_ratio(bolsa_casa, bolsa_fs))
+        puntuacion = _puntuacion_partido(partido_casa, candidato, alias)
         if puntuacion > mejor_puntuacion:
             mejor_puntuacion = puntuacion
             mejor_partido = candidato

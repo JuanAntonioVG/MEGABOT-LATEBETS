@@ -148,6 +148,33 @@ def test_auditar_no_confunde_barcelona_con_barcelona_sc():
     assert discrepancias == []
 
 
+def test_encontrar_mejor_coincidencia_no_confunde_dos_partidos_que_comparten_un_equipo():
+    """Caso real detectado en produccion la noche del 22-23 de agosto:
+    'Skanderborg AGF Haandbold vs TMS Ringsted' (casa) se emparejo con
+    'Aalborg vs Skanderborg AGF' (Flashscore) — son DOS PARTIDOS REALES
+    Y DISTINTOS que solo comparten un equipo, no el mismo partido escrito
+    de otra forma. Comparar "local+visitante" como una sola bolsa de
+    palabras dejaba que ese equipo compartido subiera la puntuacion por
+    encima del umbral aunque el otro equipo no tuviera nada que ver."""
+    casa = [_partido("Skanderborg AGF Haandbold", "TMS Ringsted", detalle="18:00")]
+    flashscore = [_partido("Aalborg", "Skanderborg AGF", detalle="16:00", fuente="flashscore")]
+    discrepancias, stats = _auditar_sin_db(casa, flashscore)
+    assert stats.verificados == 0  # no se da por bueno el emparejamiento
+    assert discrepancias == []  # y por tanto no se avisa de una "discrepancia" inventada
+
+
+def test_encontrar_mejor_coincidencia_sigue_encontrando_partidos_reales_con_nombres_distintos():
+    """El arreglo del caso de arriba no debe volverse tan estricto que
+    dos formas legitimas de escribir el MISMO partido dejen de
+    emparejarse (caso real, misma noche: mismo partido, un lado
+    abrevia el segundo equipo)."""
+    casa = _partido("Sydney Olympic", "Marconi Stallions FC")
+    candidatos = [_partido("Sydney Olympic", "Marconi", fuente="flashscore")]
+    mejor, puntuacion = encontrar_mejor_coincidencia(casa, candidatos, {})
+    assert mejor is candidatos[0]
+    assert puntuacion >= UMBRAL_CONFIANZA_MINIMA
+
+
 def test_normalizar_hora_ignora_texto_sin_hora():
     assert normalizar_hora("En Vivo") == "n/a"
     assert normalizar_hora("Comienza en 5 min") == "n/a"

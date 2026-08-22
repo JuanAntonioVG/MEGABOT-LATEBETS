@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS tiempos_etapa (
     ejecucion_id INTEGER NOT NULL,
     etiqueta TEXT NOT NULL,
     segundos REAL NOT NULL,
+    partidos INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (ejecucion_id) REFERENCES ejecuciones (id)
 );
 """
@@ -102,6 +103,19 @@ def inicializar_db(ruta: Path) -> None:
     ruta.parent.mkdir(parents=True, exist_ok=True)
     with _conectar(ruta) as con:
         con.executescript(SCHEMA)
+        _migrar_columnas_viejas(con)
+
+
+def _migrar_columnas_viejas(con: sqlite3.Connection) -> None:
+    """`CREATE TABLE IF NOT EXISTS` no anade columnas nuevas a una tabla
+    que ya existia de una version anterior — hace falta un ALTER TABLE
+    aparte. Bug real: `tiempos_etapa.partidos` no existia en las bases
+    de datos creadas antes de este cambio, asi que el conteo de
+    partidos por casa que SI se calculaba en cada ciclo nunca se
+    guardaba (se perdia en cuanto se mandaba el mensaje de Telegram)."""
+    columnas = {fila["name"] for fila in con.execute("PRAGMA table_info(tiempos_etapa)")}
+    if "partidos" not in columnas:
+        con.execute("ALTER TABLE tiempos_etapa ADD COLUMN partidos INTEGER NOT NULL DEFAULT 0")
 
 
 @contextmanager
@@ -351,8 +365,8 @@ def cerrar_ejecucion(
 def guardar_tiempo_etapa(ruta: Path, ejecucion_id: int, tiempo: TiempoEtapa) -> None:
     with _conectar(ruta) as con:
         con.execute(
-            "INSERT INTO tiempos_etapa (ejecucion_id, etiqueta, segundos) VALUES (?, ?, ?)",
-            (ejecucion_id, tiempo.etiqueta, tiempo.segundos),
+            "INSERT INTO tiempos_etapa (ejecucion_id, etiqueta, segundos, partidos) VALUES (?, ?, ?, ?)",
+            (ejecucion_id, tiempo.etiqueta, tiempo.segundos, tiempo.partidos),
         )
 
 

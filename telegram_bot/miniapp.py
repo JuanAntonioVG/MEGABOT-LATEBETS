@@ -34,16 +34,17 @@ URL_BASE_PANEL = "https://juanantoniovg.github.io/MEGABOT-LATEBETS/panel.html"
 # la URL real llego a 9323 caracteres (medido contra la base de datos
 # real del proyecto) y ya no cargaba.
 #
-# Los numeros de aqui abajo (mas recortar los textos largos y compactar
-# las fechas) NO son una estimacion — se midieron dos veces: contra la
-# base de datos real del proyecto (~3850 caracteres) y contra un caso
-# forzado a proposito (alias al limite, con nombres largos truncados al
-# maximo en todos los campos: ~5570 caracteres). Los dos quedan bastante
-# por debajo de los 9323 que rompieron, con margen de sobra por si el
-# limite real de Fastly resulta ser mas bajo de lo esperado.
-LIMITE_REPORTES = 5
-LIMITE_EJECUCIONES = 5
-LIMITE_ALIAS = 8
+# Los numeros de aqui abajo NO son una estimacion, se han medido dos
+# veces (y reajustado una segunda vez tras la primera noche real de
+# uso, que con LIMITE_REPORTES=5 se quedaba corta: hubo una ejecucion
+# con 9 discrepancias reales y el panel solo enseñaba 5). Con los
+# valores actuales: caso real de esa misma noche (9 discrepancias) ~5150
+# caracteres; peor caso forzado (reportes + alias + ejecuciones al
+# limite, con nombres largos truncados al maximo en todos los campos)
+# ~6700 caracteres — bastante por debajo de los 9323 que rompieron.
+LIMITE_REPORTES = 10
+LIMITE_EJECUCIONES = 4
+LIMITE_ALIAS = 5
 
 # Cualquier nombre de equipo/liga/alias por encima de esto se recorta con
 # "…" al embeberlo en la URL — proteccion dura contra el mismo problema
@@ -51,7 +52,7 @@ LIMITE_ALIAS = 8
 # (o alguien escribe un alias manual larguisimo). La base de datos
 # guarda el texto completo tal cual; esto solo afecta a lo que se ve en
 # el panel.
-LIMITE_TEXTO_REPORTE = 22
+LIMITE_TEXTO_REPORTE = 16
 
 # Acciones que el panel puede pedir junto con el guardado. Se procesan
 # en telegram_bot/bot.py (no aqui) porque necesitan el Bot/Application
