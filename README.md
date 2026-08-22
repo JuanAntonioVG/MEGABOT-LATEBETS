@@ -56,14 +56,35 @@ python run.py
 
 Déjalo corriendo en una terminal. Te escribe `/start` al bot en Telegram
 para ver los comandos disponibles: `/panel` (Mini App visual — ver abajo),
-`/menu` (lo mismo con botones de chat), `/hora`, `/paralelismo`,
-`/verbose`, `/ejecutar` (lanza un ciclo ya mismo), `/alias`, `/estado`.
+`/menu` (activar/desactivar casas y deportes con botones de chat), `/hora`,
+`/paralelismo`, `/verbose`, `/ejecutar` (lanza un ciclo ya mismo), `/alias`,
+`/estado`.
 
 ### Activar el panel visual (Mini App de Telegram) — un paso, una sola vez
 
 `/panel` y el botón junto al campo de texto abren una pantalla de verdad
-dentro de Telegram (`docs/panel.html`), no botones de chat. Esa página
-vive en GitHub Pages, así que hay que activarlo una vez en el repo:
+dentro de Telegram (`docs/panel.html`), no botones de chat, con cuatro
+pestañas — pensada para poder controlar y diagnosticar TODO el bot sin
+pantalla delante (la Raspberry Pi no tiene una):
+
+- **🏠 Casas** — encender/apagar cada casa+deporte, con "activar/desactivar todo" por casa.
+- **📋 Reportes** — las últimas discrepancias encontradas con todo el detalle
+  (equipos, hora y liga de cada lado) y las últimas ejecuciones (duración,
+  partidos, errores) — esto es lo que abre el botón "Ver detalle" de cada
+  notificación, en vez de mandar el detalle como texto de chat.
+- **🧠 Alias** — aprobar o rechazar las propuestas de Ollama, borrar un alias
+  aprobado que resultó un error, añadir uno a mano, y un botón para pedirle
+  a Ollama que revise la cola ahora mismo (antes solo por `/alias revisar`).
+- **🛠 Ajustes** — paralelismo, hora diaria, pausar la ejecución programada
+  sin perder la hora configurada, modo verboso, y un botón para lanzar un
+  ciclo ya mismo.
+
+Todo lo que se marca en el panel se aplica de golpe al pulsar "Guardar" (el
+botón nativo de Telegram, abajo) — incluidas las acciones (lanzar un ciclo,
+pedirle a Ollama que revise), que corren en segundo plano y avisan por
+Telegram aparte cuando terminan, para no bloquear el guardado.
+
+Esa página vive en GitHub Pages, así que hay que activarlo una vez en el repo:
 
 1. En GitHub → tu repo → **Settings → Pages**.
 2. **Source**: "Deploy from a branch" → **Branch**: `main` → **Folder**: `/docs` → **Save**.

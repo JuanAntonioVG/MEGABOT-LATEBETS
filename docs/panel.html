@@ -42,12 +42,12 @@
   }
   nav.tabs button {
     flex: 1;
-    padding: 9px 10px;
+    padding: 9px 4px;
     border-radius: 10px;
     border: none;
     background: var(--bg-card);
     color: var(--hint);
-    font-size: 0.86rem;
+    font-size: 0.76rem;
     font-weight: 600;
     font-family: inherit;
   }
@@ -60,6 +60,24 @@
 
   section.view { display: none; flex-direction: column; gap: 12px; }
   section.view.active { display: flex; }
+
+  .section-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--hint);
+    padding: 4px 4px 0;
+  }
+
+  .empty-state {
+    padding: 22px 14px;
+    text-align: center;
+    color: var(--hint);
+    font-size: 0.88rem;
+    background: var(--bg-card);
+    border-radius: 14px;
+  }
 
   .card {
     background: var(--bg-card);
@@ -180,24 +198,190 @@
     font-weight: 700;
   }
   body.dirty .badge-dirty { display: inline-block; }
+
+  /* ---------- acciones (ejecutar ahora / pedir a Ollama) ---------- */
+  .action-btn {
+    display: block;
+    width: 100%;
+    border: none;
+    background: var(--bg-card);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding: 14px;
+    border-radius: 14px;
+    font-family: inherit;
+    text-align: center;
+  }
+  .action-btn.armed { background: var(--accent); color: var(--accent-text); }
+
+  /* ---------- reportes ---------- */
+  .report-card {
+    background: var(--bg-card);
+    border-radius: 14px;
+    padding: 12px 14px;
+    border-left: 4px solid var(--off);
+  }
+  .report-card.alta { border-left-color: var(--on); }
+  .report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    color: var(--hint);
+    margin-bottom: 8px;
+  }
+  .badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #fff;
+  }
+  .badge-alta { background: var(--on); }
+  .badge-baja { background: var(--off); }
+  .report-side { padding: 5px 0; }
+  .report-side + .report-side { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 8px; }
+  .report-side-label { font-size: 0.74rem; color: var(--hint); margin-bottom: 2px; }
+  .report-time { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 8px; }
+  .report-teams { font-size: 0.88rem; }
+  .report-fecha { font-size: 0.7rem; color: var(--hint); text-align: right; margin-top: 6px; }
+
+  .exec-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+  }
+  #ejecuciones-lista .exec-row:first-child { border-top: none; }
+  .exec-fecha { font-weight: 600; font-variant-numeric: tabular-nums; font-size: 0.92rem; }
+  .exec-stats {
+    display: flex;
+    gap: 9px;
+    font-size: 0.8rem;
+    color: var(--hint);
+    align-items: center;
+    font-variant-numeric: tabular-nums;
+    flex: none;
+  }
+
+  /* ---------- alias ---------- */
+  .alias-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+  }
+  .card .card-title + .alias-row { border-top: none; }
+  .alias-text { font-size: 0.86rem; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .alias-text code { font-size: 0.86rem; }
+  .alias-badge {
+    font-size: 0.66rem;
+    color: var(--hint);
+    display: block;
+    margin-top: 2px;
+  }
+  .alias-actions { display: flex; gap: 6px; flex: none; }
+  .chip-btn {
+    border: none;
+    background: var(--bg);
+    color: var(--hint);
+    font-size: 0.95rem;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-family: inherit;
+    line-height: 1;
+  }
+  .chip-btn.armed.ok { background: var(--on); }
+  .chip-btn.armed.bad { background: var(--off); }
+
+  .field-row {
+    display: flex;
+    gap: 8px;
+    padding: 11px 14px;
+  }
+  .field-row input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.88rem;
+    font-family: inherit;
+    padding: 9px 10px;
+    border-radius: 8px;
+  }
+  .field-row button {
+    flex: none;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-family: inherit;
+  }
 </style>
 </head>
 <body>
 
 <header>
   <h1>⚙️ Panel LateBets <span class="badge-dirty" id="badge-dirty">sin guardar</span></h1>
-  <p>Cambia lo que quieras y pulsa "Guardar cambios" abajo.</p>
+  <p>Cambia lo que quieras y pulsa "Guardar" abajo.</p>
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-view="view-casas">🏠 Casas y deportes</button>
+  <button class="tab-btn active" data-view="view-casas">🏠 Casas</button>
+  <button class="tab-btn" data-view="view-reportes">📋 Reportes</button>
+  <button class="tab-btn" data-view="view-alias">🧠 Alias</button>
   <button class="tab-btn" data-view="view-ajustes">🛠 Ajustes</button>
 </nav>
 
 <main>
   <section class="view active" id="view-casas"></section>
 
+  <section class="view" id="view-reportes">
+    <div class="section-label">Últimas discrepancias</div>
+    <div id="reportes-lista" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+    <div class="section-label" style="margin-top:4px;">Últimas ejecuciones</div>
+    <div class="card"><div id="ejecuciones-lista"></div></div>
+  </section>
+
+  <section class="view" id="view-alias">
+    <button type="button" class="action-btn" id="btn-revisar-ollama">🔎 Pedir a Ollama que revise la cola</button>
+    <div class="hint" style="padding:0 4px;">Se lanza al guardar — puede tardar, el resultado llega como mensaje aparte.</div>
+
+    <div class="section-label" style="margin-top:4px;">Pendientes de aprobar (Ollama)</div>
+    <div class="card"><div id="alias-pendientes"></div></div>
+
+    <div class="section-label" style="margin-top:4px;">Aprobados</div>
+    <div class="card"><div id="alias-aprobados"></div></div>
+
+    <div class="card">
+      <div class="card-title">Añadir a mano</div>
+      <div class="field-row">
+        <input type="text" id="alias-variante" placeholder="Como lo escribe la casa (ej. barça)">
+      </div>
+      <div class="field-row" style="padding-top:0;">
+        <input type="text" id="alias-canonico" placeholder="Como lo escribe Flashscore (ej. fc barcelona)">
+        <button type="button" id="alias-add-btn">➕ Añadir</button>
+      </div>
+      <div id="alias-nuevos-lista"></div>
+    </div>
+  </section>
+
   <section class="view" id="view-ajustes">
+    <button type="button" class="action-btn" id="btn-ejecutar-ciclo">▶️ Ejecutar ciclo ahora</button>
+    <div class="hint" style="padding:0 4px;">Se lanza al guardar — el resultado llega por Telegram cuando termine.</div>
+
     <div class="card">
       <div class="card-title">Paralelismo</div>
       <div class="row">
@@ -217,6 +401,15 @@
         <div class="label">Hora</div>
         <input type="time" id="input-hora" value="00:00">
       </div>
+      <div class="row">
+        <div class="label">Pausar programación</div>
+        <label class="switch">
+          <input type="checkbox" id="input-pausada">
+          <span class="track"></span>
+          <span class="thumb"></span>
+        </label>
+      </div>
+      <div class="hint" style="padding:0 14px 12px;">Salta la ejecución automática sin perder la hora configurada. /ejecutar y esta pestaña siguen funcionando igual.</div>
     </div>
 
     <div class="card">
@@ -237,6 +430,30 @@
 <script>
   const tg = window.Telegram && window.Telegram.WebApp;
 
+  // Espejo del EMOJIS_DEPORTE de config/catalogo_casas.py — no hay forma
+  // de compartir este literal con Python en una pagina estatica sin
+  // build, asi que si se anade un deporte nuevo hay que tocar los dos.
+  const EMOJIS = {
+    futbol: "⚽", baloncesto: "🏀", tenis: "🎾", voleibol: "🏐",
+    balonmano: "🤾", hockey: "🏒", waterpolo: "🤽", futsal: "🥅",
+  };
+
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function formatearFecha(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    if (d.toDateString() === new Date().toDateString()) return `${hh}:${mm}`;
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mo} ${hh}:${mm}`;
+  }
+
   // ---------- tema nativo de Telegram ----------
   function aplicarTema() {
     if (!tg) return;
@@ -252,7 +469,7 @@
 
   // ---------- estado ----------
   const params = new URLSearchParams(location.search);
-  let estado = { c: [], p: 2, h: "00:00", v: false };
+  let estado = { c: [], p: 2, h: "00:00", v: false, pp: false, al: { pend: [], apr: [] }, r: [], ej: [] };
   try {
     if (params.get('estado')) {
       estado = JSON.parse(decodeURIComponent(escape(atob(params.get('estado').replace(/-/g, '+').replace(/_/g, '/')))));
@@ -266,16 +483,34 @@
   const paralelismoInicial = estado.p;
   let horaInicial = estado.h;
   let verbosoInicial = !!estado.v;
+  let pausadaActual = !!estado.pp;
+  const pausadaInicial = !!estado.pp;
+
+  const decisionesAlias = {}; // aliasId -> "aprobar" | "rechazar" (pendiente o aprobado, misma forma)
+  let aliasNuevos = []; // [{variante, canonico}]
+  const accionesArmadas = new Set(); // "ejecutar_ciclo" | "revisar_ollama"
+
+  function textoBotonGuardar() {
+    const ej = accionesArmadas.has('ejecutar_ciclo');
+    const ol = accionesArmadas.has('revisar_ollama');
+    if (ej && ol) return '💾 Guardar (2 acciones)';
+    if (ej) return '💾 Guardar y ejecutar';
+    if (ol) return '💾 Guardar y consultar Ollama';
+    return '💾 Guardar cambios';
+  }
 
   function marcarSucio() {
     const hayToggles = Object.keys(cambiosToggle).length > 0;
     const hayParalelismo = paralelismoActual !== paralelismoInicial;
     const hayHora = document.getElementById('input-hora').value !== horaInicial;
     const hayVerboso = document.getElementById('input-verboso').checked !== verbosoInicial;
-    const sucio = hayToggles || hayParalelismo || hayHora || hayVerboso;
+    const hayPausada = pausadaActual !== pausadaInicial;
+    const hayAlias = Object.keys(decisionesAlias).length > 0 || aliasNuevos.length > 0;
+    const hayAcciones = accionesArmadas.size > 0;
+    const sucio = hayToggles || hayParalelismo || hayHora || hayVerboso || hayPausada || hayAlias || hayAcciones;
     document.body.classList.toggle('dirty', sucio);
     if (tg) {
-      if (sucio) { tg.MainButton.enable(); tg.MainButton.setText('💾 Guardar cambios'); }
+      if (sucio) { tg.MainButton.enable(); tg.MainButton.setText(textoBotonGuardar()); }
       else { tg.MainButton.disable(); tg.MainButton.setText('Sin cambios'); }
     }
   }
@@ -289,6 +524,13 @@
       document.getElementById(btn.dataset.view).classList.add('active');
     });
   });
+  // Un enlace (ej. el boton "Ver detalle" de una notificacion) puede pedir
+  // abrir directamente en una pestaña concreta via ?tab=reportes.
+  const tabInicial = params.get('tab');
+  if (tabInicial) {
+    const btnInicial = document.querySelector(`.tab-btn[data-view="view-${tabInicial}"]`);
+    if (btnInicial) btnInicial.click();
+  }
 
   // ---------- render casas ----------
   const contenedorCasas = document.getElementById('view-casas');
@@ -361,6 +603,166 @@
     contenedorCasas.appendChild(card);
   });
 
+  // ---------- render reportes ----------
+  const contReportes = document.getElementById('reportes-lista');
+  if (estado.r.length === 0) {
+    contReportes.innerHTML = '<div class="empty-state">Sin discrepancias recientes 🎉</div>';
+  } else {
+    estado.r.forEach(d => {
+      const card = document.createElement('div');
+      card.className = 'report-card ' + (d.p === 'alta' ? 'alta' : 'baja');
+      card.innerHTML = `
+        <div class="report-header">
+          <span>${EMOJIS[d.dp] || '❓'} ${Math.round(d.s)}% similitud</span>
+          <span class="badge ${d.p === 'alta' ? 'badge-alta' : 'badge-baja'}">${d.p === 'alta' ? 'alta prioridad' : 'baja prioridad'}</span>
+        </div>
+        <div class="report-side">
+          <div class="report-side-label">⭐ Flashscore · ${escapeHtml(d.lf)}</div>
+          <div><span class="report-time">${escapeHtml(d.hf)}</span><span class="report-teams">${escapeHtml(d.ef[0])} vs ${escapeHtml(d.ef[1])}</span></div>
+        </div>
+        <div class="report-side">
+          <div class="report-side-label">🏠 ${escapeHtml(d.cs)} · ${escapeHtml(d.lc)}</div>
+          <div><span class="report-time">${escapeHtml(d.hc)}</span><span class="report-teams">${escapeHtml(d.ec[0])} vs ${escapeHtml(d.ec[1])}</span></div>
+        </div>
+        <div class="report-fecha">${formatearFecha(d.t)}</div>`;
+      contReportes.appendChild(card);
+    });
+  }
+
+  // ---------- render ejecuciones ----------
+  const contEj = document.getElementById('ejecuciones-lista');
+  if (estado.ej.length === 0) {
+    contEj.innerHTML = '<div class="empty-state">Sin ejecuciones registradas todavía.</div>';
+  } else {
+    estado.ej.forEach(e => {
+      const row = document.createElement('div');
+      row.className = 'exec-row';
+      row.innerHTML = `
+        <div>
+          <div class="exec-fecha">${formatearFecha(e.i)}</div>
+          <div class="hint" style="padding:0;">${escapeHtml(e.h)}</div>
+        </div>
+        <div class="exec-stats">
+          <span>⏱ ${Math.round(e.d)}s</span>
+          <span>⚽ ${e.pt}</span>
+          <span>🎯 ${e.dc}</span>
+          ${e.er > 0 ? `<span class="badge badge-baja">${e.er} err</span>` : ''}
+        </div>`;
+      contEj.appendChild(row);
+    });
+  }
+
+  // ---------- render alias ----------
+  function renderPendientes() {
+    const cont = document.getElementById('alias-pendientes');
+    cont.innerHTML = '';
+    if (estado.al.pend.length === 0) {
+      cont.innerHTML = '<div class="empty-state">No hay propuestas pendientes.</div>';
+      return;
+    }
+    estado.al.pend.forEach(a => {
+      const decision = decisionesAlias[a.id];
+      const row = document.createElement('div');
+      row.className = 'alias-row';
+      row.innerHTML = `
+        <div class="alias-text"><code>${escapeHtml(a.va)}</code> → <code>${escapeHtml(a.ca)}</code></div>
+        <div class="alias-actions">
+          <button type="button" class="chip-btn ok ${decision === 'aprobar' ? 'armed' : ''}" data-id="${a.id}" data-accion="aprobar">✅</button>
+          <button type="button" class="chip-btn bad ${decision === 'rechazar' ? 'armed' : ''}" data-id="${a.id}" data-accion="rechazar">❌</button>
+        </div>`;
+      cont.appendChild(row);
+    });
+    cont.querySelectorAll('button[data-accion]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const accion = btn.dataset.accion;
+        if (decisionesAlias[id] === accion) delete decisionesAlias[id];
+        else decisionesAlias[id] = accion;
+        renderPendientes();
+        marcarSucio();
+      });
+    });
+  }
+
+  function renderAprobados() {
+    const cont = document.getElementById('alias-aprobados');
+    cont.innerHTML = '';
+    if (estado.al.apr.length === 0) {
+      cont.innerHTML = '<div class="empty-state">Todavía no hay alias aprobados.</div>';
+      return;
+    }
+    estado.al.apr.forEach(a => {
+      const marcado = decisionesAlias[a.id] === 'rechazar';
+      const row = document.createElement('div');
+      row.className = 'alias-row';
+      row.style.opacity = marcado ? '0.5' : '1';
+      row.innerHTML = `
+        <div class="alias-text">
+          <code>${escapeHtml(a.va)}</code> → <code>${escapeHtml(a.ca)}</code>
+          <span class="alias-badge">${a.fu === 'ollama' ? '🤖 propuesto por Ollama' : '✍️ añadido a mano'}</span>
+        </div>
+        <div class="alias-actions">
+          <button type="button" class="chip-btn bad ${marcado ? 'armed' : ''}" data-id="${a.id}">✕</button>
+        </div>`;
+      cont.appendChild(row);
+    });
+    cont.querySelectorAll('button[data-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        if (decisionesAlias[id] === 'rechazar') delete decisionesAlias[id];
+        else decisionesAlias[id] = 'rechazar';
+        renderAprobados();
+        marcarSucio();
+      });
+    });
+  }
+
+  function renderAliasNuevos() {
+    const cont = document.getElementById('alias-nuevos-lista');
+    cont.innerHTML = '';
+    aliasNuevos.forEach((a, i) => {
+      const row = document.createElement('div');
+      row.className = 'alias-row';
+      row.innerHTML = `
+        <div class="alias-text"><code>${escapeHtml(a.variante)}</code> → <code>${escapeHtml(a.canonico)}</code></div>
+        <div class="alias-actions"><button type="button" class="chip-btn bad" data-i="${i}">✕</button></div>`;
+      cont.appendChild(row);
+    });
+    cont.querySelectorAll('button[data-i]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        aliasNuevos.splice(Number(btn.dataset.i), 1);
+        renderAliasNuevos();
+        marcarSucio();
+      });
+    });
+  }
+
+  document.getElementById('alias-add-btn').addEventListener('click', () => {
+    const variante = document.getElementById('alias-variante').value.trim();
+    const canonico = document.getElementById('alias-canonico').value.trim();
+    if (!variante || !canonico) return;
+    aliasNuevos.push({ variante, canonico });
+    document.getElementById('alias-variante').value = '';
+    document.getElementById('alias-canonico').value = '';
+    renderAliasNuevos();
+    marcarSucio();
+  });
+
+  renderPendientes();
+  renderAprobados();
+  renderAliasNuevos();
+
+  // ---------- acciones ----------
+  function toggleAccion(nombre, btn) {
+    if (accionesArmadas.has(nombre)) { accionesArmadas.delete(nombre); btn.classList.remove('armed'); }
+    else { accionesArmadas.add(nombre); btn.classList.add('armed'); }
+    marcarSucio();
+  }
+  const btnOllama = document.getElementById('btn-revisar-ollama');
+  btnOllama.addEventListener('click', () => toggleAccion('revisar_ollama', btnOllama));
+  const btnEjecutar = document.getElementById('btn-ejecutar-ciclo');
+  btnEjecutar.addEventListener('click', () => toggleAccion('ejecutar_ciclo', btnEjecutar));
+
   // ---------- ajustes ----------
   const parValor = document.getElementById('par-valor');
   parValor.textContent = paralelismoActual;
@@ -381,17 +783,28 @@
   document.getElementById('input-verboso').checked = verbosoInicial;
   document.getElementById('input-verboso').addEventListener('change', marcarSucio);
 
+  document.getElementById('input-pausada').checked = pausadaActual;
+  document.getElementById('input-pausada').addEventListener('change', (e) => {
+    pausadaActual = e.target.checked;
+    marcarSucio();
+  });
+
   // ---------- guardar ----------
   function guardar() {
     const toggles = Object.entries(cambiosToggle).map(([clave, activo]) => {
       const [c, d] = clave.split(':');
       return { c, d, a: activo };
     });
+    const alias_decisiones = Object.entries(decisionesAlias).map(([id, accion]) => ({ id: Number(id), accion }));
     const payload = {
       toggles,
       paralelismo: paralelismoActual,
       hora: document.getElementById('input-hora').value,
       verboso: document.getElementById('input-verboso').checked,
+      programacion_pausada: pausadaActual,
+      alias_decisiones,
+      alias_nuevos: aliasNuevos,
+      acciones: Array.from(accionesArmadas),
     };
     if (tg) {
       tg.sendData(JSON.stringify(payload));

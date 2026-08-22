@@ -103,6 +103,23 @@ CATALOGO_CASAS: dict[str, CasaApuestas] = {
 }
 
 
+# Vive aqui (dato de catalogo, no de formato) para que tanto
+# telegram_bot/notificaciones.py como telegram_bot/miniapp.py puedan
+# importarlo sin que uno dependa del otro — notificaciones.py necesita
+# construir URLs de la Mini App (miniapp.py) y antes ese import cruzado
+# habria creado un ciclo.
+EMOJIS_DEPORTE = {
+    "futbol": "⚽",
+    "baloncesto": "🏀",
+    "tenis": "🎾",
+    "voleibol": "🏐",
+    "balonmano": "🤾",
+    "hockey": "🏒",
+    "waterpolo": "🤽",
+    "futsal": "🥅",
+}
+
+
 def todas_las_combinaciones() -> list[tuple[str, str, str]]:
     """Devuelve (casa_id, deporte, url) para cada combinacion que existe
     en el catalogo (independientemente de si esta encendida o apagada)."""

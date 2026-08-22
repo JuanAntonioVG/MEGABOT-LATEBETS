@@ -199,12 +199,34 @@ def listar_alias_pendientes(ruta: Path) -> list[sqlite3.Row]:
         return con.execute("SELECT * FROM alias_equipos WHERE aprobado = 0 ORDER BY creado_en").fetchall()
 
 
+def listar_alias_aprobados(ruta: Path, limite: int = 200) -> list[sqlite3.Row]:
+    """A diferencia de `obtener_alias_aprobados` (pensada para el matcher:
+    solo variante->canonico), esta devuelve la fila completa — incluido
+    `id`, que hace falta para poder borrar un alias concreto desde el
+    panel."""
+    with _conectar(ruta) as con:
+        return con.execute(
+            "SELECT * FROM alias_equipos WHERE aprobado = 1 ORDER BY creado_en DESC LIMIT ?", (limite,)
+        ).fetchall()
+
+
 def aprobar_alias(ruta: Path, alias_id: int) -> None:
     with _conectar(ruta) as con:
         con.execute("UPDATE alias_equipos SET aprobado = 1 WHERE id = ?", (alias_id,))
 
 
 def rechazar_alias(ruta: Path, alias_id: int) -> None:
+    """Descarta una propuesta PENDIENTE (aprobado=0) — borrado."""
+    with _conectar(ruta) as con:
+        con.execute("DELETE FROM alias_equipos WHERE id = ?", (alias_id,))
+
+
+def eliminar_alias(ruta: Path, alias_id: int) -> None:
+    """Borra un alias ya APROBADO (ej. uno que resulto ser un error, o que
+    el usuario quiere retirar del diccionario). Misma operacion que
+    `rechazar_alias` a nivel de base de datos — se mantienen como dos
+    funciones separadas porque cada nombre deja claro, en el sitio donde
+    se llama, sobre que tipo de alias se esta actuando."""
     with _conectar(ruta) as con:
         con.execute("DELETE FROM alias_equipos WHERE id = ?", (alias_id,))
 

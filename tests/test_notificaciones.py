@@ -1,55 +1,54 @@
 from core.models import Discrepancia
-from telegram_bot.notificaciones import LIMITE_CARACTERES_MENSAJE, formatear_mensajes_discrepancias
+from telegram_bot.notificaciones import formatear_resumen_discrepancias
 
 
-def _discrepancia(indice: int) -> Discrepancia:
+def _discrepancia(prioridad: str = "alta") -> Discrepancia:
     return Discrepancia(
         casa_id="bwin",
         casa_nombre="Bwin",
         deporte="futbol",
-        liga=f"Liga Casa {indice}",
-        liga_fs=f"Liga Flashscore {indice}",
-        equipo_local_casa=f"Equipo Local {indice}",
-        equipo_visitante_casa=f"Equipo Visitante {indice}",
+        liga="Liga Casa",
+        equipo_local_casa="Equipo Local",
+        equipo_visitante_casa="Equipo Visitante",
         detalle_casa="21:00",
-        equipo_local_fs=f"Equipo Local FS {indice}",
-        equipo_visitante_fs=f"Equipo Visitante FS {indice}",
+        equipo_local_fs="Equipo Local FS",
+        equipo_visitante_fs="Equipo Visitante FS",
         detalle_fs="19:00",
         similitud=90.0,
-        prioridad="alta",
+        prioridad=prioridad,
     )
 
 
-def test_sin_discrepancias_no_genera_mensajes():
-    assert formatear_mensajes_discrepancias([]) == []
+def test_sin_discrepancias_no_se_llama_en_la_practica():
+    # formatear_resumen_discrepancias no se usa con lista vacia (enviar_resultado
+    # ya comprueba `if resultado.discrepancias` antes de llamarla), pero no debe
+    # reventar si algun dia se le pasa una.
+    texto = formatear_resumen_discrepancias([])
+    assert "0" in texto
 
 
-def test_pocas_discrepancias_caben_en_un_mensaje():
-    mensajes = formatear_mensajes_discrepancias([_discrepancia(1), _discrepancia(2)])
-    assert len(mensajes) == 1
-    assert "#1" in mensajes[0]
-    assert "#2" in mensajes[0]
+def test_singular_cuando_hay_una_sola():
+    texto = formatear_resumen_discrepancias([_discrepancia("alta")])
+    assert "1 oportunidad detectada" in texto
+    assert "Todas de alta prioridad" in texto
 
 
-def test_muchas_discrepancias_se_reparten_en_varios_mensajes_dentro_del_limite():
-    discrepancias = [_discrepancia(i) for i in range(1, 60)]
-    mensajes = formatear_mensajes_discrepancias(discrepancias)
-    assert len(mensajes) > 1
-    for mensaje in mensajes:
-        assert len(mensaje) <= LIMITE_CARACTERES_MENSAJE
-
-    # Ninguna discrepancia se pierde ni se duplica en el reparto.
-    texto_completo = "\n".join(mensajes)
-    for i in range(1, 60):
-        assert f">#{i}<" in texto_completo
+def test_desglose_por_prioridad():
+    discrepancias = [_discrepancia("alta"), _discrepancia("alta"), _discrepancia("baja")]
+    texto = formatear_resumen_discrepancias(discrepancias)
+    assert "3 oportunidades detectadas" in texto
+    assert "2 de alta prioridad" in texto
+    assert "1 de baja prioridad" in texto
 
 
-def test_orden_por_similitud_descendente():
-    baja = _discrepancia(1)
-    baja.similitud = 70.0
-    alta = _discrepancia(2)
-    alta.similitud = 95.0
-    mensajes = formatear_mensajes_discrepancias([baja, alta])
-    # La de mayor similitud (95%, indice original 2) debe listarse como #1.
-    assert mensajes[0].index("#1") < mensajes[0].index("#2")
-    assert "95%" in mensajes[0].split("#1")[1].split("#2")[0]
+def test_todas_baja_prioridad():
+    texto = formatear_resumen_discrepancias([_discrepancia("baja"), _discrepancia("baja")])
+    assert "Todas de baja prioridad" in texto
+    assert "alta prioridad" not in texto.split("Todas")[0]
+
+
+def test_no_expone_detalle_de_equipos_ni_horas():
+    # A proposito: el detalle vive en el panel, no en este mensaje corto.
+    texto = formatear_resumen_discrepancias([_discrepancia("alta")])
+    assert "Equipo Local" not in texto
+    assert "21:00" not in texto

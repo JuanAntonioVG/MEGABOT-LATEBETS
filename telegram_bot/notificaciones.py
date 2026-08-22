@@ -1,92 +1,57 @@
 """Formateo y envio de notificaciones de Telegram.
 
-Rediseñado el 2026-08-22 tras feedback real de uso: el formato anterior
-(un mensaje de Telegram por CADA discrepancia, con separadores pesados y
-muchos emojis distintos compitiendo entre si) resultaba dificil de leer y,
-con muchos hallazgos en una noche, se convertia en un aluvion de avisos
-separados. Ahora se agrupan todas las discrepancias en el minimo numero
-de mensajes posible (respetando el limite de caracteres de Telegram), en
-bloques compactos donde lo primero que se ve es justo lo que importa: la
-hora de cada lado y si la liga coincide.
+Rediseñado el 2026-08-22 tras feedback real de uso, en DOS pasadas:
+
+1. Del formato original (un mensaje de Telegram por CADA discrepancia) a
+   bloques compactos agrupados en el minimo numero de mensajes.
+2. De ahi a esto: ni siquiera el detalle agrupado va ya como texto de
+   chat. El chat solo recibe un CONTEO (cuantas, cuantas de alta/baja
+   prioridad) con un boton que abre la Mini App en la pestaña de
+   Reportes — una pagina puede mostrar cada discrepancia con jerarquia
+   visual de verdad (Flashscore vs casa, liga de cada lado una debajo de
+   la otra) sin pelear contra el limite de caracteres de un mensaje ni
+   convertirse en un muro de texto cuando hay muchas.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.constants import ParseMode
 
-from config.catalogo_casas import casas_que_soportan, todos_los_deportes
+from config.catalogo_casas import EMOJIS_DEPORTE, casas_que_soportan, todos_los_deportes
 from core import db
 from core.models import Discrepancia, ResultadoEjecucion, TiempoEtapa
-
-EMOJIS_DEPORTE = {
-    "futbol": "⚽",
-    "baloncesto": "🏀",
-    "tenis": "🎾",
-    "voleibol": "🏐",
-    "balonmano": "🤾",
-    "hockey": "🏒",
-    "waterpolo": "🤽",
-    "futsal": "🥅",
-}
-
-# Margen de sobra bajo el limite real de Telegram (4096) para no
-# arriesgarse a que un mensaje se rechace por quedarse justo al borde.
-LIMITE_CARACTERES_MENSAJE = 3200
+from telegram_bot import miniapp
 
 
 def _sanitizar(texto: object) -> str:
     return str(texto).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def formatear_bloque_discrepancia(d: Discrepancia, indice: int) -> str:
-    """Un bloque compacto para UNA discrepancia — pensado para ir varios
-    seguidos en un mismo mensaje, no para enviarse solo."""
-    emoji_deporte = EMOJIS_DEPORTE.get(d.deporte, "❓")
-    semaforo = "🟢" if d.prioridad == "alta" else "🔴"
-    etiqueta_prioridad = "alta prioridad" if d.prioridad == "alta" else "baja prioridad"
-    return (
-        f"{semaforo} <b>#{indice}</b> {emoji_deporte} · {d.similitud:.0f}% similitud · {etiqueta_prioridad}\n\n"
-        f"⭐ Flashscore — <i>{_sanitizar(d.liga_fs)}</i>\n"
-        f"🕐 <b>{_sanitizar(d.detalle_fs)}</b>  <code>{_sanitizar(d.equipo_local_fs)} vs "
-        f"{_sanitizar(d.equipo_visitante_fs)}</code>\n\n"
-        f"🏠 {_sanitizar(d.casa_nombre)} — <i>{_sanitizar(d.liga)}</i>\n"
-        f"🕐 <b>{_sanitizar(d.detalle_casa)}</b>  <code>{_sanitizar(d.equipo_local_casa)} vs "
-        f"{_sanitizar(d.equipo_visitante_casa)}</code>"
-    )
+def formatear_resumen_discrepancias(discrepancias: list[Discrepancia]) -> str:
+    """Version corta pensada para chat: solo el conteo y el desglose por
+    prioridad. El detalle (equipos, horas, liga de cada lado) vive en el
+    panel — ver `enviar_resultado`."""
+    total = len(discrepancias)
+    altas = sum(1 for d in discrepancias if d.prioridad == "alta")
+    bajas = total - altas
 
-
-def formatear_mensajes_discrepancias(discrepancias: list[Discrepancia]) -> list[str]:
-    """Agrupa TODAS las discrepancias en el menor numero de mensajes de
-    Telegram posible, en vez de uno por discrepancia. Devuelve la lista de
-    mensajes ya listos para enviar (vacia si no hay ninguna)."""
-    if not discrepancias:
-        return []
-
-    ordenadas = sorted(discrepancias, key=lambda x: -x.similitud)
-    bloques = [formatear_bloque_discrepancia(d, i) for i, d in enumerate(ordenadas, start=1)]
-
-    singular = len(ordenadas) == 1
+    singular = total == 1
     sustantivo = "oportunidad" if singular else "oportunidades"
     participio = "detectada" if singular else "detectadas"
-    cabecera = (
-        f"🚨 <b>{len(ordenadas)} {sustantivo} {participio}</b>\n"
-        f"<i>Revisa que la liga coincida en ambos lados antes de actuar.</i>"
-    )
+    lineas = [f"🚨 <b>{total} {sustantivo} {participio}</b>"]
 
-    mensajes: list[str] = []
-    actual = cabecera
-    for bloque in bloques:
-        candidato = f"{actual}\n\n{bloque}"
-        if len(candidato) > LIMITE_CARACTERES_MENSAJE and actual != cabecera:
-            mensajes.append(actual)
-            actual = bloque
-        else:
-            actual = candidato
-    mensajes.append(actual)
-    return mensajes
+    if altas and bajas:
+        lineas.append(f"🟢 {altas} de alta prioridad · 🔴 {bajas} de baja prioridad")
+    elif altas:
+        lineas.append("🟢 Todas de alta prioridad")
+    else:
+        lineas.append("🔴 Todas de baja prioridad")
+
+    lineas.append("<i>Toca «Ver detalle» y revisa que la liga coincida antes de actuar.</i>")
+    return "\n".join(lineas)
 
 
 def _partidos_por_casa(tiempos: list[TiempoEtapa]) -> list[TiempoEtapa]:
@@ -119,15 +84,33 @@ def formatear_resumen(resultado: ResultadoEjecucion, verboso: bool) -> str:
     return "\n".join(lineas)
 
 
-async def enviar_resultado(bot: Bot, chat_id: int, resultado: ResultadoEjecucion, verboso: bool) -> None:
-    for mensaje in formatear_mensajes_discrepancias(resultado.discrepancias):
-        await bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.HTML)
+def _boton_panel(texto: str, ruta_db: Path, tab: str = "casas") -> InlineKeyboardMarkup:
+    url = miniapp.construir_url_panel(ruta_db, tab=tab)
+    return InlineKeyboardMarkup([[InlineKeyboardButton(texto, web_app=WebAppInfo(url=url))]])
+
+
+async def enviar_resultado(
+    bot: Bot, chat_id: int, ruta_db: Path, resultado: ResultadoEjecucion, verboso: bool
+) -> None:
+    if resultado.discrepancias:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=formatear_resumen_discrepancias(resultado.discrepancias),
+            parse_mode=ParseMode.HTML,
+            reply_markup=_boton_panel("📋 Ver detalle", ruta_db, tab="reportes"),
+        )
 
     # Este resumen se manda SIEMPRE, incluso sin discrepancias: es el
     # "heartbeat" que confirma que el ciclo corrió bien, importante al no
-    # haber pantalla delante de la Raspberry Pi.
+    # haber pantalla delante de la Raspberry Pi. Lleva su propio boton al
+    # panel completo (no solo a Reportes) para que siempre haya una
+    # forma de llegar a todo desde el ultimo mensaje, sin tener que
+    # buscar el boton persistente del chat.
     await bot.send_message(
-        chat_id=chat_id, text=formatear_resumen(resultado, verboso), parse_mode=ParseMode.HTML
+        chat_id=chat_id,
+        text=formatear_resumen(resultado, verboso),
+        parse_mode=ParseMode.HTML,
+        reply_markup=_boton_panel("🖥 Abrir panel", ruta_db),
     )
 
 

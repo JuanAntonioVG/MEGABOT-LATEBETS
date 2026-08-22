@@ -55,6 +55,25 @@ def test_alias_aprobar_y_rechazar(tmp_path):
     assert db.listar_alias_pendientes(ruta) == []
 
 
+def test_alias_listar_aprobados_y_eliminar(tmp_path):
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    db.guardar_alias(ruta, "barça", "fc barcelona", fuente="ollama", aprobado=True)
+    db.guardar_alias(ruta, "atleti", "atletico de madrid", fuente="manual", aprobado=True)
+
+    aprobados = db.listar_alias_aprobados(ruta)
+    assert len(aprobados) == 2
+    assert {f["fuente"] for f in aprobados} == {"ollama", "manual"}
+
+    id_a_borrar = next(f["id"] for f in aprobados if f["variante"] == "barça")
+    db.eliminar_alias(ruta, id_a_borrar)
+
+    restantes = db.listar_alias_aprobados(ruta)
+    assert len(restantes) == 1
+    assert restantes[0]["variante"] == "atleti"
+
+
 def test_cola_no_encontrados(tmp_path):
     ruta = tmp_path / "test.sqlite3"
     db.inicializar_db(ruta)

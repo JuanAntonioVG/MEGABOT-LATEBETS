@@ -11,6 +11,7 @@ configuracion.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from functools import wraps
@@ -84,10 +85,53 @@ def construir_app(settings: Settings) -> Application:
         try:
             verboso = db.get_setting_bool(settings.db_path, "verboso", False)
             resultado = await ejecutar_ciclo(settings.db_path, headless=settings.headless)
-            await enviar_resultado(app.bot, settings.telegram_admin_id, resultado, verboso)
+            await enviar_resultado(app.bot, settings.telegram_admin_id, settings.db_path, resultado, verboso)
         except Exception as e:
             logger.exception("Fallo el ciclo automatico")
             await enviar_error(app.bot, settings.telegram_admin_id, f"{type(e).__name__}: {e}")
+
+    async def _ejecutar_programado(app: Application) -> None:
+        """Punto de entrada del scheduler diario — a diferencia de un
+        /ejecutar manual o de la acción "Ejecutar ciclo ahora" del panel
+        (que deben funcionar siempre, ya que son un gesto explícito),
+        este respeta la pausa de programación: para eso existe, poder
+        decirle al bot "esta noche no" desde el panel sin tener que
+        acordarse de qué hora había configurada para restaurarla luego."""
+        if db.get_setting_bool(settings.db_path, "programacion_pausada", False):
+            logger.info("Ejecución programada saltada: programación pausada desde el panel.")
+            await app.bot.send_message(
+                chat_id=settings.telegram_admin_id,
+                text="⏸ Ejecución diaria saltada — programación pausada desde el panel.",
+            )
+            return
+        await ejecutar_y_notificar(app)
+
+    async def _revisar_ollama_en_fondo(app: Application) -> None:
+        """Lanza la revisión de Ollama SIN bloquear el bucle de eventos.
+        `alias_ia.revisar_cola_pendientes` usa `requests` (sincrono) y
+        puede tardar segundos por caso — con una cola larga, llamarla
+        directamente aqui dejaria el bot entero sin responder mientras
+        tanto (ni un simple /estado), algo especialmente malo en una
+        máquina sin pantalla donde reiniciar a mano no es trivial."""
+        try:
+            revisados, propuestas = await asyncio.get_running_loop().run_in_executor(
+                None,
+                alias_ia.revisar_cola_pendientes,
+                settings.db_path,
+                settings.ollama_host,
+                settings.ollama_model,
+            )
+            await app.bot.send_message(
+                chat_id=settings.telegram_admin_id,
+                text=f"🔎 Ollama revisó {revisados} caso(s). Propuestas nuevas: {propuestas}.",
+            )
+            await _actualizar_boton_menu(app)
+        except Exception as e:
+            logger.exception("Fallo la revisión de Ollama en segundo plano")
+            await app.bot.send_message(
+                chat_id=settings.telegram_admin_id,
+                text=f"❌ Falló la revisión de Ollama: {type(e).__name__}: {e}",
+            )
 
     async def _actualizar_boton_menu(app: Application) -> None:
         """Refresca el boton persistente (el que aparece junto al campo de
@@ -108,7 +152,7 @@ def construir_app(settings: Settings) -> Application:
         db.inicializar_db(settings.db_path)
         hora_str = db.get_setting(settings.db_path, "hora_ejecucion", "00:00")
         hora, minuto = (int(x) for x in hora_str.split(":"))
-        programador.programar_ciclo_diario(lambda: ejecutar_y_notificar(app), hora, minuto)
+        programador.programar_ciclo_diario(lambda: _ejecutar_programado(app), hora, minuto)
         programador.iniciar()
         await _actualizar_boton_menu(app)
         logger.info("Bot listo. Próxima ejecución programada: %s", programador.proxima_ejecucion())
@@ -118,9 +162,11 @@ def construir_app(settings: Settings) -> Application:
     async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(
             "🤖 <b>Bot LateBets activo.</b>\n\n"
-            "🖥 <b>/panel</b> — abrir el panel visual (casas, deportes, ajustes) "
+            "🖥 <b>/panel</b> — abrir el panel visual: casas y deportes, reportes, "
+            "alias de equipos (con Ollama) y ajustes — incluye botones para lanzar "
+            "un ciclo o pedirle a Ollama que revise, sin usar comandos "
             "— también disponible en el botón junto al campo de texto\n"
-            "/menu — lo mismo pero con botones de chat, sin salir del chat\n"
+            "/menu — activar/desactivar casas y deportes con botones de chat\n"
             "/hora HH:MM — cambiar la hora de ejecución diaria\n"
             "/paralelismo N — cambiar cuántos scrapers corren a la vez\n"
             "/verbose on|off — tiempos detallados en el resumen\n"
@@ -151,7 +197,7 @@ def construir_app(settings: Settings) -> Application:
 
         datos = update.effective_message.web_app_data.data
         try:
-            resumen, nueva_hora = miniapp.aplicar_cambios(settings.db_path, datos)
+            resumen, nueva_hora, acciones = miniapp.aplicar_cambios(settings.db_path, datos)
         except Exception as e:
             logger.exception("No se pudieron aplicar los cambios de la Mini App")
             await update.effective_message.reply_text(f"❌ No se pudo guardar: {type(e).__name__}: {e}")
@@ -160,7 +206,21 @@ def construir_app(settings: Settings) -> Application:
         if nueva_hora:
             hora, minuto = (int(x) for x in nueva_hora.split(":"))
             programador.programar_ciclo_diario(
-                lambda: ejecutar_y_notificar(context.application), hora, minuto
+                lambda: _ejecutar_programado(context.application), hora, minuto
+            )
+
+        # Las acciones se lanzan en segundo plano (create_task) y no se
+        # esperan aqui: un ciclo o una revision de Ollama pueden tardar
+        # minutos, y esta respuesta ("Guardado") tiene que llegar ya —
+        # el resultado real llega despues como mensaje(s) aparte, igual
+        # que /ejecutar y /alias revisar.
+        if "ejecutar_ciclo" in acciones:
+            context.application.create_task(
+                ejecutar_y_notificar(context.application), name="ejecutar_ciclo_panel"
+            )
+        if "revisar_ollama" in acciones:
+            context.application.create_task(
+                _revisar_ollama_en_fondo(context.application), name="revisar_ollama_panel"
             )
 
         await _actualizar_boton_menu(context.application)
@@ -289,7 +349,7 @@ def construir_app(settings: Settings) -> Application:
 
         db.set_setting(settings.db_path, "hora_ejecucion", f"{hora:02d}:{minuto:02d}")
         app = context.application
-        programador.programar_ciclo_diario(lambda: ejecutar_y_notificar(app), hora, minuto)
+        programador.programar_ciclo_diario(lambda: _ejecutar_programado(app), hora, minuto)
         await _actualizar_boton_menu(app)
         await update.effective_message.reply_text(
             f"✅ Hora de ejecución actualizada a {hora:02d}:{minuto:02d}"
@@ -336,11 +396,8 @@ def construir_app(settings: Settings) -> Application:
 
         if args and args[0] == "revisar":
             await update.effective_message.reply_text("🔎 Consultando a Ollama sobre la cola pendiente...")
-            revisados, propuestas = alias_ia.revisar_cola_pendientes(
-                settings.db_path, settings.ollama_host, settings.ollama_model
-            )
-            await update.effective_message.reply_text(
-                f"Revisados {revisados} casos. Propuestas nuevas: {propuestas}.\nUsa /alias para verlas."
+            context.application.create_task(
+                _revisar_ollama_en_fondo(context.application), name="revisar_ollama_cmd"
             )
             return
 
@@ -372,8 +429,9 @@ def construir_app(settings: Settings) -> Application:
     async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         toggles = db.listar_toggles(settings.db_path)
         activos = sum(1 for v in toggles.values() if v)
+        pausada = db.get_setting_bool(settings.db_path, "programacion_pausada", False)
         await update.effective_message.reply_text(
-            f"📡 Próxima ejecución: {programador.proxima_ejecucion()}\n"
+            f"📡 Próxima ejecución: {'⏸ pausada' if pausada else programador.proxima_ejecucion()}\n"
             f"🔛 Combinaciones activas: {activos}\n"
             f"⚙️ Paralelismo: {db.get_setting_int(settings.db_path, 'paralelismo', 2)}\n"
             f"🗣️ Verboso: {'on' if db.get_setting_bool(settings.db_path, 'verboso', False) else 'off'}"

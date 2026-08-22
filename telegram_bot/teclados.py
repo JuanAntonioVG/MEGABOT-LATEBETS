@@ -14,9 +14,8 @@ from pathlib import Path
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from config.catalogo_casas import CATALOGO_CASAS, casas_que_soportan, todos_los_deportes
+from config.catalogo_casas import CATALOGO_CASAS, EMOJIS_DEPORTE, casas_que_soportan, todos_los_deportes
 from core import db
-from telegram_bot.notificaciones import EMOJIS_DEPORTE
 
 
 def teclado_menu_principal() -> InlineKeyboardMarkup:
