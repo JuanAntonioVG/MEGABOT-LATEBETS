@@ -1,0 +1,25 @@
+# Entorno virtual
+.venv/
+
+# Cache de Python
+__pycache__/
+*.pyc
+
+# Secretos y datos locales (NUNCA deben ir a git)
+.env
+datos/*.sqlite3
+datos/*.sqlite3-*
+datos/*.db
+
+# Cache de herramientas
+.pytest_cache/
+.ruff_cache/
+
+# Logs
+*.log
+
+# Playwright
+test-results/
+
+# Windows
+desktop.ini

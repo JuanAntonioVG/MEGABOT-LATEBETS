@@ -1,1 +1,101 @@
-# MEGABOT-LATEBETS
+# MEGA BOT LATE BETS
+
+Bot que scrapea Flashscore (fuente de verdad) y varias casas de apuestas,
+compara horarios de partidos, y avisa por Telegram cuando hay una
+discrepancia — con panel de control remoto por Telegram (qué casas y
+deportes están activos, hora de ejecución, paralelismo...).
+
+Ver [ROADMAP.md](ROADMAP.md) para el diseño completo y el porqué de cada
+decisión. Este README es solo la guía de puesta en marcha.
+
+## Requisitos
+
+- Python 3.12+
+- [Ollama](https://ollama.com) instalado y corriendo localmente, con un
+  modelo descargado (`ollama pull llama3.2`) — solo hace falta para
+  `/alias revisar`, el resto del bot funciona sin él.
+
+## Puesta en marcha (Windows, PC de pruebas)
+
+```powershell
+# 1. Entorno virtual (si no existe ya)
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 2. Dependencias (usa requirements-dev.txt si vas a tocar código —
+#    incluye ruff/pre-commit/detect-secrets además de lo que necesita el bot)
+pip install -r requirements-dev.txt
+playwright install chromium
+
+# 3. Configuracion
+copy .env.example .env
+# Edita .env: token del bot (@BotFather) y tu TELEGRAM_ADMIN_ID
+# (pideselo a @userinfobot en Telegram, es tu user_id numerico).
+
+# 4. Hook de seguridad (evita que un secreto real vuelva a colarse en un commit)
+pre-commit install
+```
+
+## Uso
+
+**Probar un ciclo ahora mismo, sin Telegram** (recomendado para empezar):
+
+```powershell
+python run.py --once
+```
+
+Scrapea y audita todo lo que esté activo (por defecto, todo lo del
+catálogo) y lo imprime en la terminal — nada de esto toca Telegram.
+
+**Arrancar el bot completo** (panel de control + ejecución programada a
+diario):
+
+```powershell
+python run.py
+```
+
+Déjalo corriendo en una terminal. Te escribe `/start` al bot en Telegram
+para ver los comandos disponibles: `/menu` (activar/desactivar casas y
+deportes con botones), `/hora`, `/paralelismo`, `/verbose`, `/ejecutar`
+(lanza un ciclo ya mismo), `/alias`, `/estado`.
+
+## Tests
+
+```powershell
+pytest tests/ -v
+ruff check .
+ruff format .
+```
+
+## Estructura
+
+```
+config/          Ajustes de entorno (.env) y catálogo estático de casas/deportes
+core/            Modelos, base de datos SQLite, matcher, orquestador, scheduler, Ollama
+scrapers/        Un fichero por casa (+ Flashscore), todos con la misma interfaz
+telegram_bot/    Comandos, teclados inline, formateo de notificaciones
+tests/           Tests unitarios (matcher y base de datos)
+datos/           SQLite y datos locales — NUNCA se sube a git
+run.py           Punto de entrada único
+```
+
+Añadir una casa de apuestas nueva = un fichero nuevo en `scrapers/`
+(implementando `ScraperBase.extraer`) + una entrada en
+`config/catalogo_casas.py`. El orquestador no necesita ningún cambio.
+
+## Notas sobre los scrapers
+
+Todos verificados en vivo el 2026-08-22 contra las webs reales (no son
+una copia del bot anterior — varias webs habían cambiado por completo,
+ver comentarios al principio de cada fichero en `scrapers/`). El más
+frágil es `scrapers/winamax.py`: su web usa clases CSS generadas sin
+nombre semántico, así que es el primer sitio a revisar si un día deja de
+devolver partidos. El resto usa selectores con `data-testid` o clases
+semánticas, más resistentes a rediseños.
+
+## Despliegue en Raspberry Pi
+
+Pendiente para cuando el comportamiento en Windows esté validado (ver
+Fase 7 del [ROADMAP.md](ROADMAP.md)): mismo código, `git pull` +
+`.env`/base de datos copiados a mano, y un servicio `systemd` en vez de
+lanzarlo manualmente.

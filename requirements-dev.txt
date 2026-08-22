@@ -1,0 +1,6 @@
+# Herramientas de desarrollo — SOLO para tu PC. La Raspberry Pi no las
+# necesita para ejecutar el bot (con requirements.txt le basta).
+-r requirements.txt
+ruff
+pre-commit
+detect-secrets
