@@ -13,9 +13,23 @@ Verificado en vivo el 2026-08-22 contra la pagina de futbol:
   "Mañana" antes de los de mañana. Se descartan los partidos que no
   esten bajo una cabecera que empiece por "hoy".
 
-La rama de baloncesto/voleibol (formato tabla,
-`table[data-testid="compound-table-column"]`) se conserva del bot
-anterior pero NO se ha vuelto a verificar en vivo hoy.
+La rama de formato tabla (`table[data-testid="compound-table-column"]`),
+heredada del bot anterior, SI se ha verificado en vivo hoy para
+BALONCESTO: 8 partidos reales. Voleibol y balonmano, en cambio, tienen
+un problema mas de fondo y NO funcionan todavia: sus URLs en
+`config/catalogo_casas.py` apuntan a la pagina de "competiciones" de ese
+deporte (`/sports/voleibol/998917/`, sin sufijo), no a una pagina de
+"todos los partidos" como el resto — confirmado en vivo que faltaba el
+`/matches/` que si tienen futbol/baloncesto/tenis/hockey, PERO añadirlo
+sin mas no basta: `/sports/voleibol/998917/matches/` devuelve una pagina
+de error propia de Pokerstars ("Lo sentimos, se ha producido un error"),
+no la lista de partidos. Los partidos de estos dos deportes parecen
+vivir solo dentro de cada competicion por separado (se ven enlaces tipo
+`/sports/voleibol/998917/amistosos-internacionales-masculinos/...`) —
+resolverlo de verdad necesitaria recorrer esos enlaces uno a uno, que es
+mas trabajo del que tiene sentido meter aqui sin confirmar antes que
+merece la pena. Por ahora esta casa se queda sin cobertura real para
+estos dos deportes (`extraer` devuelve una lista vacia, no falla).
 """
 
 from __future__ import annotations

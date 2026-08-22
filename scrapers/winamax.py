@@ -31,6 +31,15 @@ bot anterior:
    cuanto aparece ese separador — todo lo anterior en el documento se
    asume de hoy (no hay separador explicito de "Hoy", los partidos de hoy
    simplemente empiezan sin cabecera).
+
+Ampliado y verificado en vivo el mismo dia contra baloncesto y voleibol:
+a diferencia de Bwin/Pokerstars, este fichero nunca tuvo ninguna rama
+especial por deporte — y no hace falta, el mismo `SELECTOR_TARJETA`
+generico ya devolvia baloncesto real (4 partidos, con el separador de
+"mañana" cortando la acumulacion correctamente, tal y como se espera) y
+voleibol (comprobado que la tarjeta SI existe en la pagina aunque en el
+momento exacto de una prueba anterior no hubiera ninguna — deporte de
+poco volumen, no un fallo del selector).
 """
 
 from __future__ import annotations

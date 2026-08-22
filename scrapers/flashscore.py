@@ -4,6 +4,16 @@ resto de casas.
 Verificado en vivo el 2026-08-22 contra www.flashscore.es/futbol/ (462
 partidos, 100% con nombre de equipo, 336 programados + 126 en vivo o
 finalizados — la suma cuadra exacta con el total).
+
+Ampliado y verificado en vivo el mismo dia contra /baloncesto/: el
+selector de la FILA de partido (SELECTOR_PARTIDO) ya era generico y
+funcionaba tal cual, pero el de NOMBRE DE EQUIPO no — baloncesto no usa
+el envoltorio .event__xxxParticipant + span con testid que usa futbol,
+el texto va directo dentro de .event__participant--xxx. Sin este
+segundo patron, baloncesto devolvia 0 partidos pese a haber filas de
+verdad en la pagina (ver `_extraer_nombre`). No verificado todavia en
+vivo para voleibol/waterpolo, pero es razonable esperar el mismo patron
+"directo" ya que es la estructura mas simple de las dos.
 """
 
 from __future__ import annotations
@@ -111,20 +121,33 @@ class FlashscoreScraper(ScraperBase):
                 break
 
     @staticmethod
-    def _parsear_partido(elemento: Tag, liga: str, deporte: str) -> Partido | None:
-        home_div = elemento.select_one(".event__homeParticipant")
-        away_div = elemento.select_one(".event__awayParticipant")
-        nombre_local_tag = (
-            home_div.select_one('[data-testid="wcl-scores-simple-text-01"]') if home_div else None
-        )
-        nombre_visitante_tag = (
-            away_div.select_one('[data-testid="wcl-scores-simple-text-01"]') if away_div else None
-        )
-        if not (nombre_local_tag and nombre_visitante_tag):
-            return None
+    def _extraer_nombre(elemento: Tag, lado: str) -> str | None:
+        """El nombre del equipo no vive siempre en el mismo sitio: en
+        futbol esta DENTRO de un div .event__xxxParticipant, en un span
+        [data-testid="wcl-scores-simple-text-01"] anidado. En baloncesto
+        (verificado en vivo 2026-08-22 contra /baloncesto/ — 0 de 27
+        partidos se reconocian con el patron de futbol) el texto esta
+        DIRECTAMENTE dentro de div.event__participant--xxx, sin ese
+        envoltorio ni el span. Se prueban los dos patrones; el segundo es
+        ademas el candidato mas probable para el resto de deportes de
+        equipo (voleibol, waterpolo...) por ser la estructura mas simple
+        de las dos."""
+        contenedor = elemento.select_one(f".event__{lado}Participant")
+        if contenedor:
+            nombre_tag = contenedor.select_one('[data-testid="wcl-scores-simple-text-01"]')
+            if nombre_tag:
+                return nombre_tag.get_text(strip=True)
+        directo = elemento.select_one(f".event__participant--{lado}")
+        if directo:
+            return directo.get_text(strip=True)
+        return None
 
-        equipo_local = nombre_local_tag.get_text(strip=True)
-        equipo_visitante = nombre_visitante_tag.get_text(strip=True)
+    @staticmethod
+    def _parsear_partido(elemento: Tag, liga: str, deporte: str) -> Partido | None:
+        equipo_local = FlashscoreScraper._extraer_nombre(elemento, "home")
+        equipo_visitante = FlashscoreScraper._extraer_nombre(elemento, "away")
+        if not (equipo_local and equipo_visitante):
+            return None
 
         estado = EstadoPartido.DESCONOCIDO
         detalle = ""

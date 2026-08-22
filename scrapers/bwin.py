@@ -8,9 +8,15 @@ Verificado en vivo el 2026-08-22 contra la pagina de futbol de hoy:
   LaLiga") y sus partidos dentro del MISMO elemento — no hace falta
   escaneo lineal, es una consulta con scope directo.
 
-La rama de baloncesto (`ms-six-pack-event` / `div.participant-container`)
-se conserva del bot anterior pero NO se ha vuelto a verificar en vivo
-hoy — revisarla la primera vez que actives Bwin+Baloncesto.
+La rama de baloncesto (`ms-six-pack-event` / `div.participant-container`),
+heredada del bot anterior, SI se ha verificado en vivo hoy: 15 partidos
+reales de baloncesto (WNBA, amistosos...) y 12 de voleibol — resulta que
+Bwin usa el MISMO componente `ms-six-pack-event` para varios deportes no
+futbolisticos, asi que `_detectar_selector_partido` ya cubre baloncesto
+y voleibol sin cambios. Waterpolo comprobado tambien: 0 partidos, pero
+confirmado con el propio texto de la pagina ("Lo sentimos, no hay
+eventos disponibles actualmente para este filtro") — no es un fallo de
+selector, es que ahora mismo no hay nada que scrapear.
 """
 
 from __future__ import annotations
