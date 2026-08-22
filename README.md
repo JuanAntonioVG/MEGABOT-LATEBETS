@@ -55,9 +55,25 @@ python run.py
 ```
 
 Déjalo corriendo en una terminal. Te escribe `/start` al bot en Telegram
-para ver los comandos disponibles: `/menu` (activar/desactivar casas y
-deportes con botones), `/hora`, `/paralelismo`, `/verbose`, `/ejecutar`
-(lanza un ciclo ya mismo), `/alias`, `/estado`.
+para ver los comandos disponibles: `/panel` (Mini App visual — ver abajo),
+`/menu` (lo mismo con botones de chat), `/hora`, `/paralelismo`,
+`/verbose`, `/ejecutar` (lanza un ciclo ya mismo), `/alias`, `/estado`.
+
+### Activar el panel visual (Mini App de Telegram) — un paso, una sola vez
+
+`/panel` y el botón junto al campo de texto abren una pantalla de verdad
+dentro de Telegram (`docs/panel.html`), no botones de chat. Esa página
+vive en GitHub Pages, así que hay que activarlo una vez en el repo:
+
+1. En GitHub → tu repo → **Settings → Pages**.
+2. **Source**: "Deploy from a branch" → **Branch**: `main` → **Folder**: `/docs` → **Save**.
+3. Espera 1-2 minutos a que GitHub lo publique en
+   `https://<tu-usuario>.github.io/MEGABOT-LATEBETS/panel.html`.
+
+Si tu usuario de GitHub no es `JuanAntonioVG`, actualiza `URL_BASE_PANEL`
+en `telegram_bot/miniapp.py`. El bot no necesita ningún servidor propio
+para esto — la página es estática y habla con el bot a través del propio
+Telegram (`sendData`), igual de local y privado que el resto del bot.
 
 ## Tests
 

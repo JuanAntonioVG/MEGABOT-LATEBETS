@@ -112,3 +112,15 @@ def todas_las_combinaciones() -> list[tuple[str, str, str]]:
             if url:
                 combinaciones.append((casa.id, deporte, url))
     return combinaciones
+
+
+def todos_los_deportes() -> list[str]:
+    """Todos los deportes que soporta AL MENOS una casa, ordenados
+    alfabeticamente. Para el menu de Telegram "por deporte"."""
+    deportes = {deporte for casa in CATALOGO_CASAS.values() for deporte, url in casa.deportes.items() if url}
+    return sorted(deportes)
+
+
+def casas_que_soportan(deporte: str) -> list[CasaApuestas]:
+    """Casas del catalogo que tienen URL para ese deporte concreto."""
+    return [casa for casa in CATALOGO_CASAS.values() if casa.deportes.get(deporte)]

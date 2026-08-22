@@ -18,11 +18,21 @@ principio de la pagina que repite un partido varias veces ANTES de la
 primera cabecera de liga real — se descartan los partidos sin liga
 conocida para no duplicar datos.
 
+Descubierto el mismo dia (revisando por que Betfair traia muchos menos
+partidos que el resto de casas): la pagina TAMBIEN mezcla partidos de
+"mañana" con los de hoy, igual que Winamax/Pokerstars — pero aqui no
+hace falta buscar un separador aparte, porque el propio atributo
+`datetime` del `<time>` de cada partido trae la fecha completa en
+formato Javascript (`"Sat Aug 22 2026 21:30:00 GMT+0200 ..."`), asi que
+se compara directamente contra la fecha de hoy.
+
 Solo se ha verificado la pagina de futbol; baloncesto/otros deportes usan
 la misma logica pero no se han comprobado en vivo todavia.
 """
 
 from __future__ import annotations
+
+from datetime import datetime
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -30,6 +40,11 @@ from playwright.async_api import Page
 
 from core.models import EstadoPartido, Partido
 from scrapers.base import ScraperBase, aceptar_cookies, agrupar_por_liga, extraer_hora, registrar
+
+# Formato Javascript Date.toString(), ej. "Sat Aug 22 2026 21:30:00 GMT+0200 (...)".
+# Nos quedamos solo con los primeros 24 caracteres (dia semana, mes, dia,
+# año, hora) e ignoramos el resto (zona horaria con nombre, que varia).
+_FORMATO_FECHA_JS = "%a %b %d %Y %H:%M:%S"
 
 SELECTOR_PARTIDO = 'a[class*="-fixtureHeader"]'
 SELECTOR_LIGA = 'div[class*="-competitionHeader"]'
@@ -89,6 +104,15 @@ class BetfairScraper(ScraperBase):
         elif datetime_tag:
             estado = EstadoPartido.PROGRAMADO
             detalle = extraer_hora(datetime_tag.get_text(" ", strip=True))
+
+            fecha_attr = datetime_tag.get("datetime", "")
+            if fecha_attr:
+                try:
+                    fecha_partido = datetime.strptime(fecha_attr[:24], _FORMATO_FECHA_JS).date()
+                    if fecha_partido != datetime.now().date():
+                        return None  # es de otro dia (normalmente "mañana"), no nos interesa
+                except ValueError:
+                    pass  # formato inesperado: no descartamos el partido por las dudas
 
         if estado == EstadoPartido.DESCONOCIDO:
             return None

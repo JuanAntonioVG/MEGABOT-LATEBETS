@@ -7,6 +7,11 @@ Verificado en vivo el 2026-08-22 contra la pagina de futbol:
   partidos dentro del MISMO elemento — verificado sin duplicados ni
   anidamiento (160 partidos totales = 160 sumando por accordion).
 - Hora: atributo `datetime` de `<time>`, formato limpio "17:00".
+- El listado de cada liga NO esta limitado a hoy: dentro del mismo
+  accordion aparece una cabecera `<div class="_2725eb4">Hoy, 22 de agosto
+  de 2026</div>` antes de los partidos de hoy, y (si los hay) otra para
+  "Mañana" antes de los de mañana. Se descartan los partidos que no
+  esten bajo una cabecera que empiece por "hoy".
 
 La rama de baloncesto/voleibol (formato tabla,
 `table[data-testid="compound-table-column"]`) se conserva del bot
@@ -20,11 +25,16 @@ from bs4.element import Tag
 from playwright.async_api import Page
 
 from core.models import EstadoPartido, Partido
-from scrapers.base import ScraperBase, aceptar_cookies, extraer_hora, registrar
+from scrapers.base import ScraperBase, aceptar_cookies, agrupar_por_liga, extraer_hora, registrar
 
 SELECTOR_ACCORDION = 'details[data-testid="sports-expandable-accordion"]'
 SELECTOR_PARTIDO_FUTBOL = 'li[data-testid="event"]'
 SELECTOR_TABLA_BALONCESTO = 'table[data-testid="compound-table-column"]'
+SELECTOR_DIVISOR_FECHA = 'div[class="_2725eb4"]'
+
+
+def _texto_divisor_fecha(header: Tag) -> str:
+    return header.get_text(strip=True).lower()
 
 
 @registrar
@@ -52,7 +62,16 @@ class PokerstarsScraper(ScraperBase):
         for accordion in soup.select(SELECTOR_ACCORDION):
             resumen = accordion.select_one("summary")
             liga = resumen.get_text(strip=True) if resumen else "Desconocida"
-            for evento in accordion.select(SELECTOR_PARTIDO_FUTBOL):
+
+            # Reutilizamos agrupar_por_liga con otro significado: aqui
+            # agrupa por SECCION DE FECHA ("hoy, ..." / "mañana, ...")
+            # dentro de este accordion, no por liga (eso ya lo tenemos).
+            por_fecha = agrupar_por_liga(
+                accordion, SELECTOR_DIVISOR_FECHA, SELECTOR_PARTIDO_FUTBOL, _texto_divisor_fecha
+            )
+            for evento, seccion_fecha in por_fecha:
+                if not seccion_fecha.startswith("hoy"):
+                    continue
                 partido = PokerstarsScraper._parsear_evento_lista(evento, liga, deporte)
                 if partido:
                     partidos.append(partido)

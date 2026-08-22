@@ -1,7 +1,7 @@
 """Scraper de Winamax.
 
-Verificado en vivo el 2026-08-22. Dos hallazgos importantes frente al bot
-anterior:
+Verificado en vivo el 2026-08-22. Tres hallazgos importantes frente al
+bot anterior:
 
 1. Winamax renderiza la lista de partidos con una lista VIRTUALIZADA
    (`ReactVirtualized__Grid`): solo los partidos visibles en pantalla
@@ -23,6 +23,14 @@ anterior:
    momento de escribir esto (solo habia partidos en directo en la
    muestra). Revisar esto es la primera prioridad si Winamax empieza a
    devolver menos partidos programados de los esperados.
+
+3. El listado NO esta limitado a hoy: sigue scrolleando hacia partidos de
+   "Mañana" y dias siguientes. Detectado en vivo un separador de dia
+   (`<div>Mañana</div>`) en mitad del scroll. Como el bot solo debe
+   avisar de discrepancias del dia en curso, se para la acumulacion en
+   cuanto aparece ese separador — todo lo anterior en el documento se
+   asume de hoy (no hay separador explicito de "Hoy", los partidos de hoy
+   simplemente empiezan sin cabecera).
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ from scrapers.base import ScraperBase, aceptar_cookies, extraer_hora, registrar
 logger = logging.getLogger(__name__)
 
 SELECTOR_TARJETA = 'div[data-testid^="match-card-"]'
+SELECTOR_DIVISOR_FECHA = "div.sc-faHdxz"
 
 
 @registrar
@@ -66,14 +75,36 @@ class WinamaxScraper(ScraperBase):
             soup = BeautifulSoup(html, "lxml")
             nuevos = 0
 
-            for tarjeta in soup.select(SELECTOR_TARJETA):
-                tarjeta_id = tarjeta.get("data-testid", "")
+            # Recorremos tarjetas Y divisores de dia EN ORDEN DE DOCUMENTO,
+            # para poder cortar en cuanto aparezca un divisor que no sea
+            # "Hoy" — todo lo que venga a partir de ahi (en esta y en
+            # futuras capturas) es de otro dia y no nos interesa.
+            combinados = soup.select(f"{SELECTOR_DIVISOR_FECHA}, {SELECTOR_TARJETA}")
+            ids_divisor = {id(el) for el in soup.select(SELECTOR_DIVISOR_FECHA)}
+            cruzo_a_otro_dia = False
+
+            for elemento in combinados:
+                if id(elemento) in ids_divisor:
+                    texto_divisor = elemento.get_text(strip=True).lower()
+                    if texto_divisor and not texto_divisor.startswith("hoy"):
+                        cruzo_a_otro_dia = True
+                        break
+                    continue
+
+                tarjeta_id = elemento.get("data-testid", "")
                 if tarjeta_id in partidos_por_id:
                     continue
-                partido = self._parsear_tarjeta(tarjeta, deporte)
+                partido = self._parsear_tarjeta(elemento, deporte)
                 if partido:
                     partidos_por_id[tarjeta_id] = partido
                     nuevos += 1
+
+            if cruzo_a_otro_dia:
+                logger.info(
+                    "Encontrado el cambio a otro dia tras %d partidos de hoy — se detiene aqui.",
+                    len(partidos_por_id),
+                )
+                break
 
             scrolls_sin_novedad = 0 if nuevos > 0 else scrolls_sin_novedad + 1
             logger.info(

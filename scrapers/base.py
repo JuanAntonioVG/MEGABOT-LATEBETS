@@ -89,15 +89,17 @@ async def scroll_hasta_estabilizar(
 
 
 def agrupar_por_liga(
-    soup: BeautifulSoup,
+    soup: BeautifulSoup | Tag,
     selector_header: str,
     selector_partido: str,
     extraer_titulo_liga: Callable[[Tag], str],
 ) -> list[tuple[Tag, str]]:
-    """Recorre el documento en orden y empareja cada partido con la liga del
-    ultimo 'header' de liga visto antes que el — el patron habitual en estas
-    webs es: cabecera de liga/competicion, seguida de sus partidos, como
-    hermanos (o primos) en el DOM, en orden de aparicion.
+    """Recorre el documento (o un `Tag` concreto, para acotar la busqueda a
+    una seccion) en orden y empareja cada partido con la liga del ultimo
+    'header' visto antes que el — el patron habitual en estas webs es:
+    cabecera (de liga, o de otra cosa — tambien sirve para agrupar por
+    seccion de fecha, ver `scrapers/pokerstars.py`), seguida de sus
+    partidos, como hermanos (o primos) en el DOM, en orden de aparicion.
 
     `extraer_titulo_liga` es una funcion (Tag) -> str que sabe leer el texto
     de un elemento 'header'. Si un partido aparece antes de cualquier header

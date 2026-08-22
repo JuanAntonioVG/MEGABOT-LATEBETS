@@ -65,11 +65,14 @@ class EstadisticasAuditoria:
 
 @dataclass(slots=True)
 class TiempoEtapa:
-    """Cuanto tardo una etapa concreta (una casa+deporte, el matching, etc.).
-    Es la base de la telemetria que permite comparar velocidad PC vs Pi."""
+    """Cuanto tardo una etapa concreta (una casa+deporte) y cuantos
+    partidos trajo. Es la base de la telemetria que permite comparar
+    velocidad PC vs Pi y ver de un vistazo si alguna casa trae menos
+    partidos de lo esperado."""
 
     etiqueta: str
     segundos: float
+    partidos: int = 0
 
 
 @dataclass(slots=True)

@@ -194,7 +194,7 @@ async def ejecutar_ciclo(
                 partidos_fs, segundos_fs, error_fs = await _scrapear_uno(
                     browser, "flashscore", url_fs, deporte, semaforo
                 )
-                resultado.tiempos.append(TiempoEtapa(f"flashscore/{deporte}", segundos_fs))
+                resultado.tiempos.append(TiempoEtapa(f"flashscore/{deporte}", segundos_fs, len(partidos_fs)))
                 if error_fs:
                     resultado.errores.append(f"Flashscore/{deporte}: {error_fs}")
                     continue
@@ -209,7 +209,9 @@ async def ejecutar_ciclo(
                 for (casa_id, casa_nombre, _url), (partidos_casa, segundos, error) in zip(
                     casas, resultados_casas, strict=True
                 ):
-                    resultado.tiempos.append(TiempoEtapa(f"{casa_id}/{deporte}", segundos))
+                    resultado.tiempos.append(
+                        TiempoEtapa(f"{casa_id}/{deporte}", segundos, len(partidos_casa))
+                    )
                     if error:
                         resultado.errores.append(f"{casa_nombre}/{deporte}: {error}")
                         continue
