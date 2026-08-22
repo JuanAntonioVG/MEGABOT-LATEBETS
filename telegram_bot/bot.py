@@ -18,9 +18,9 @@ from functools import wraps
 
 from telegram import (
     CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
+    KeyboardButton,
     MenuButtonWebApp,
+    ReplyKeyboardMarkup,
     Update,
     WebAppInfo,
 )
@@ -138,7 +138,17 @@ def construir_app(settings: Settings) -> Application:
         texto) con la Mini App, embebiendo el estado ACTUAL en su URL —
         la pagina es estatica y no puede leer la base de datos ella sola,
         asi que hay que llamarla de nuevo cada vez que algo cambia para
-        que el boton no abra un panel con datos desactualizados."""
+        que el boton no abra un panel con datos desactualizados.
+
+        OJO: este boton (MenuButtonWebApp) sirve solo para MIRAR. Segun
+        la documentacion oficial de Telegram, `sendData()` (lo que el
+        panel usa para guardar/lanzar acciones) solo funciona si la Mini
+        App se abrio desde un boton de TECLADO (KeyboardButton) — ni
+        este boton de menu ni un boton inline lo soportan, y Telegram no
+        avisa de ningun error, simplemente no entrega los datos al bot.
+        Por eso /panel (cmd_panel, mas abajo) usa un ReplyKeyboardMarkup
+        en vez de este mecanismo — es el UNICO sitio donde guardar
+        funciona de verdad."""
         try:
             url = miniapp.construir_url_panel(settings.db_path)
             await app.bot.set_chat_menu_button(
@@ -164,8 +174,10 @@ def construir_app(settings: Settings) -> Application:
             "🤖 <b>Bot LateBets activo.</b>\n\n"
             "🖥 <b>/panel</b> — abrir el panel visual: casas y deportes, reportes, "
             "alias de equipos (con Ollama) y ajustes — incluye botones para lanzar "
-            "un ciclo o pedirle a Ollama que revise, sin usar comandos "
-            "— también disponible en el botón junto al campo de texto\n"
+            "un ciclo o pedirle a Ollama que revise, sin usar comandos. Usa <b>este "
+            "comando</b> cada vez que quieras cambiar algo (el botón junto al campo "
+            "de texto sirve para mirar rápido, pero Telegram no permite guardar "
+            "desde ahí — solo desde el botón que abre /panel)\n"
             "/menu — activar/desactivar casas y deportes con botones de chat\n"
             "/hora HH:MM — cambiar la hora de ejecución diaria\n"
             "/paralelismo N — cambiar cuántos scrapers corren a la vez\n"
@@ -178,11 +190,25 @@ def construir_app(settings: Settings) -> Application:
 
     @solo_admin
     async def cmd_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        # IMPORTANTE: segun la documentacion oficial de Telegram, sendData()
+        # (lo que usa el panel para guardar cambios/lanzar acciones) SOLO
+        # funciona cuando la Mini App se abre desde un boton de TECLADO
+        # (KeyboardButton) — NO desde un boton inline ni desde el boton de
+        # menu persistente (MenuButtonWebApp). Con cualquiera de esos dos
+        # el panel se abre y se ve perfecto, pero "Guardar"/"Ejecutar" no
+        # hacen nada (Telegram no entrega el sendData al bot, sin error
+        # visible). Por eso este es el UNICO sitio que de verdad permite
+        # guardar — el boton de menu persistente sigue existiendo para
+        # mirar rapido, pero para cambiar algo hay que venir por aqui.
         url = miniapp.construir_url_panel(settings.db_path)
-        teclado = InlineKeyboardMarkup([[InlineKeyboardButton("🖥 Abrir panel", web_app=WebAppInfo(url=url))]])
+        teclado = ReplyKeyboardMarkup(
+            [[KeyboardButton("🖥 Abrir panel", web_app=WebAppInfo(url=url))]],
+            resize_keyboard=True,
+        )
         await update.effective_message.reply_text(
-            "Se abre como una pantalla dentro de Telegram — cambia lo que quieras y pulsa "
-            "«Guardar cambios» ahí dentro.",
+            "Pulsa el botón de abajo (junto al teclado, no arriba en el mensaje) — "
+            "cambia lo que quieras y pulsa «Guardar» ahí dentro. Si ha pasado tiempo desde "
+            "la última vez, vuelve a usar /panel para que el botón lleve el estado actual.",
             reply_markup=teclado,
         )
 
