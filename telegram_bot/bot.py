@@ -17,9 +17,10 @@ from collections.abc import Awaitable, Callable
 from functools import wraps
 
 from telegram import (
+    BotCommand,
     CallbackQuery,
     KeyboardButton,
-    MenuButtonWebApp,
+    MenuButtonDefault,
     ReplyKeyboardMarkup,
     Update,
     WebAppInfo,
@@ -125,7 +126,6 @@ def construir_app(settings: Settings) -> Application:
                 chat_id=settings.telegram_admin_id,
                 text=f"🔎 Ollama revisó {revisados} caso(s). Propuestas nuevas: {propuestas}.",
             )
-            await _actualizar_boton_menu(app)
         except Exception as e:
             logger.exception("Fallo la revisión de Ollama en segundo plano")
             await app.bot.send_message(
@@ -133,30 +133,39 @@ def construir_app(settings: Settings) -> Application:
                 text=f"❌ Falló la revisión de Ollama: {type(e).__name__}: {e}",
             )
 
-    async def _actualizar_boton_menu(app: Application) -> None:
-        """Refresca el boton persistente (el que aparece junto al campo de
-        texto) con la Mini App, embebiendo el estado ACTUAL en su URL —
-        la pagina es estatica y no puede leer la base de datos ella sola,
-        asi que hay que llamarla de nuevo cada vez que algo cambia para
-        que el boton no abra un panel con datos desactualizados.
+    async def _configurar_menu(app: Application) -> None:
+        """Se llama UNA sola vez al arrancar (no hace falta refrescarlo
+        nunca mas, a diferencia del botón de Mini App que tenia antes).
 
-        OJO: este boton (MenuButtonWebApp) sirve solo para MIRAR. Segun
-        la documentacion oficial de Telegram, `sendData()` (lo que el
-        panel usa para guardar/lanzar acciones) solo funciona si la Mini
-        App se abrio desde un boton de TECLADO (KeyboardButton) — ni
-        este boton de menu ni un boton inline lo soportan, y Telegram no
-        avisa de ningun error, simplemente no entrega los datos al bot.
-        Por eso /panel (cmd_panel, mas abajo) usa un ReplyKeyboardMarkup
-        en vez de este mecanismo — es el UNICO sitio donde guardar
-        funciona de verdad."""
+        Antes habia aqui un boton de menu (MenuButtonWebApp) que abria el
+        panel junto al campo de texto. Se quitó a proposito: segun la
+        documentacion oficial de Telegram, `sendData()` (lo que el panel
+        usa para guardar cambios/lanzar acciones) SOLO funciona si la
+        Mini App se abrió desde un boton de TECLADO (KeyboardButton) —
+        ni un boton de menu ni uno inline lo soportan, y Telegram no
+        avisa de ningún error: simplemente no entrega los datos al bot.
+        Tener ese boton ahi invitaba a usarlo para guardar y que pareciera
+        que "no hacía nada". Ahora el menú solo muestra la lista de
+        comandos (normal de Telegram); el ÚNICO sitio que de verdad deja
+        guardar es /panel (cmd_panel, más abajo)."""
         try:
-            url = miniapp.construir_url_panel(settings.db_path)
+            await app.bot.set_my_commands(
+                [
+                    BotCommand("panel", "Abrir el panel (única forma de guardar cambios)"),
+                    BotCommand("menu", "Activar/desactivar casas y deportes con botones"),
+                    BotCommand("hora", "Cambiar la hora de ejecución diaria"),
+                    BotCommand("paralelismo", "Cambiar cuántos scrapers corren a la vez"),
+                    BotCommand("verbose", "Tiempos detallados en el resumen: on/off"),
+                    BotCommand("ejecutar", "Lanzar un ciclo ahora mismo"),
+                    BotCommand("alias", "Revisar propuestas de alias de equipos"),
+                    BotCommand("estado", "Próxima ejecución y ajustes actuales"),
+                ]
+            )
             await app.bot.set_chat_menu_button(
-                chat_id=settings.telegram_admin_id,
-                menu_button=MenuButtonWebApp(text="Panel", web_app=WebAppInfo(url=url)),
+                chat_id=settings.telegram_admin_id, menu_button=MenuButtonDefault()
             )
         except Exception:
-            logger.exception("No se pudo actualizar el botón del panel (Mini App).")
+            logger.exception("No se pudo configurar el menú de comandos.")
 
     async def _post_init(app: Application) -> None:
         db.inicializar_db(settings.db_path)
@@ -164,7 +173,7 @@ def construir_app(settings: Settings) -> Application:
         hora, minuto = (int(x) for x in hora_str.split(":"))
         programador.programar_ciclo_diario(lambda: _ejecutar_programado(app), hora, minuto)
         programador.iniciar()
-        await _actualizar_boton_menu(app)
+        await _configurar_menu(app)
         logger.info("Bot listo. Próxima ejecución programada: %s", programador.proxima_ejecucion())
 
     # ---------------------------------------------------------- comandos
@@ -174,10 +183,8 @@ def construir_app(settings: Settings) -> Application:
             "🤖 <b>Bot LateBets activo.</b>\n\n"
             "🖥 <b>/panel</b> — abrir el panel visual: casas y deportes, reportes, "
             "alias de equipos (con Ollama) y ajustes — incluye botones para lanzar "
-            "un ciclo o pedirle a Ollama que revise, sin usar comandos. Usa <b>este "
-            "comando</b> cada vez que quieras cambiar algo (el botón junto al campo "
-            "de texto sirve para mirar rápido, pero Telegram no permite guardar "
-            "desde ahí — solo desde el botón que abre /panel)\n"
+            "un ciclo o pedirle a Ollama que revise, sin usar comandos. Es la <b>única</b> "
+            "forma de guardar cambios — usa este comando cada vez que quieras cambiar algo\n"
             "/menu — activar/desactivar casas y deportes con botones de chat\n"
             "/hora HH:MM — cambiar la hora de ejecución diaria\n"
             "/paralelismo N — cambiar cuántos scrapers corren a la vez\n"
@@ -194,12 +201,8 @@ def construir_app(settings: Settings) -> Application:
         # (lo que usa el panel para guardar cambios/lanzar acciones) SOLO
         # funciona cuando la Mini App se abre desde un boton de TECLADO
         # (KeyboardButton) — NO desde un boton inline ni desde el boton de
-        # menu persistente (MenuButtonWebApp). Con cualquiera de esos dos
-        # el panel se abre y se ve perfecto, pero "Guardar"/"Ejecutar" no
-        # hacen nada (Telegram no entrega el sendData al bot, sin error
-        # visible). Por eso este es el UNICO sitio que de verdad permite
-        # guardar — el boton de menu persistente sigue existiendo para
-        # mirar rapido, pero para cambiar algo hay que venir por aqui.
+        # menu. Este es el UNICO sitio que de verdad permite guardar —
+        # ver el comentario en _configurar_menu para el porque.
         url = miniapp.construir_url_panel(settings.db_path)
         teclado = ReplyKeyboardMarkup(
             [[KeyboardButton("🖥 Abrir panel", web_app=WebAppInfo(url=url))]],
@@ -249,7 +252,6 @@ def construir_app(settings: Settings) -> Application:
                 _revisar_ollama_en_fondo(context.application), name="revisar_ollama_panel"
             )
 
-        await _actualizar_boton_menu(context.application)
         await update.effective_message.reply_text(f"✅ Guardado: {resumen}")
 
     @solo_admin
@@ -316,7 +318,6 @@ def construir_app(settings: Settings) -> Application:
         _, casa_id, deporte, origen = query.data.split(":")
         activo_actual = db.esta_activo(settings.db_path, casa_id, deporte)
         db.set_toggle(settings.db_path, casa_id, deporte, not activo_actual)
-        await _actualizar_boton_menu(context.application)
 
         if origen == "dep":
             await _editar_seguro(
@@ -342,7 +343,6 @@ def construir_app(settings: Settings) -> Application:
             casa_id = valor
             for deporte in CATALOGO_CASAS[casa_id].deportes:
                 db.set_toggle(settings.db_path, casa_id, deporte, activo)
-            await _actualizar_boton_menu(context.application)
             await _editar_seguro(
                 query,
                 f"Deportes de {CATALOGO_CASAS[casa_id].nombre_legible}:",
@@ -352,7 +352,6 @@ def construir_app(settings: Settings) -> Application:
             deporte = valor
             for casa in casas_que_soportan(deporte):
                 db.set_toggle(settings.db_path, casa.id, deporte, activo)
-            await _actualizar_boton_menu(context.application)
             await _editar_seguro(
                 query,
                 f"Casas para {deporte.capitalize()}:",
@@ -376,7 +375,6 @@ def construir_app(settings: Settings) -> Application:
         db.set_setting(settings.db_path, "hora_ejecucion", f"{hora:02d}:{minuto:02d}")
         app = context.application
         programador.programar_ciclo_diario(lambda: _ejecutar_programado(app), hora, minuto)
-        await _actualizar_boton_menu(app)
         await update.effective_message.reply_text(
             f"✅ Hora de ejecución actualizada a {hora:02d}:{minuto:02d}"
         )
@@ -395,7 +393,6 @@ def construir_app(settings: Settings) -> Application:
             await update.effective_message.reply_text("Usa un número entero ≥ 1. Ej: /paralelismo 2")
             return
         db.set_setting(settings.db_path, "paralelismo", str(n))
-        await _actualizar_boton_menu(context.application)
         await update.effective_message.reply_text(f"✅ Paralelismo actualizado a {n}")
 
     @solo_admin
@@ -408,7 +405,6 @@ def construir_app(settings: Settings) -> Application:
             return
         nuevo = context.args[0].lower() == "on"
         db.set_setting(settings.db_path, "verboso", "1" if nuevo else "0")
-        await _actualizar_boton_menu(context.application)
         await update.effective_message.reply_text(f"✅ Modo verboso: {'on' if nuevo else 'off'}")
 
     @solo_admin
