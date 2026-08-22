@@ -20,7 +20,7 @@ from pathlib import Path
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.constants import ParseMode
 
-from config.catalogo_casas import EMOJIS_DEPORTE, casas_que_soportan, todos_los_deportes
+from config.catalogo_casas import CATALOGO_CASAS, EMOJIS_DEPORTE, casas_que_soportan, todos_los_deportes
 from core import db
 from core.models import Discrepancia, ResultadoEjecucion, TiempoEtapa
 from telegram_bot import miniapp
@@ -54,8 +54,16 @@ def formatear_resumen_discrepancias(discrepancias: list[Discrepancia]) -> str:
     return "\n".join(lineas)
 
 
-def _partidos_por_casa(tiempos: list[TiempoEtapa]) -> list[TiempoEtapa]:
-    return sorted((t for t in tiempos if not t.etiqueta.startswith("flashscore/")), key=lambda t: t.etiqueta)
+def _nombre_origen(origen: str) -> str:
+    """ "flashscore" -> "⭐ Flashscore" (la referencia); cualquier casa ->
+    "🏠 <nombre legible>". El emoji distinto es a proposito: al agrupar
+    por deporte, tiene que saltar a la vista cual es el numero de
+    referencia y cuales son los de cada casa, sin leer letra por letra."""
+    if origen == "flashscore":
+        return "⭐ Flashscore"
+    casa = CATALOGO_CASAS.get(origen)
+    nombre = casa.nombre_legible if casa else origen.capitalize()
+    return f"🏠 {nombre}"
 
 
 def formatear_resumen(resultado: ResultadoEjecucion, verboso: bool) -> str:
@@ -65,11 +73,26 @@ def formatear_resumen(resultado: ResultadoEjecucion, verboso: bool) -> str:
         f"🎯 {len(resultado.discrepancias)} discrepancias sobre {resultado.total_partidos} partidos procesados",
     ]
 
-    etapas_casas = _partidos_por_casa(resultado.tiempos)
-    if etapas_casas:
-        lineas.append("\n<b>📊 Partidos por casa</b> (para que compares que sea razonable entre ellas):")
-        for t in etapas_casas:
-            lineas.append(f"  {_sanitizar(t.etiqueta)}: <b>{t.partidos}</b>")
+    # Agrupado por deporte (no una lista plana "casa/deporte") para que
+    # comparar sea de verdad facil: dentro de cada deporte, Flashscore
+    # (la referencia) siempre primero y despues cada casa.
+    grupos: dict[str, list[tuple[str, TiempoEtapa]]] = {}
+    for t in resultado.tiempos:
+        origen, _, deporte = t.etiqueta.partition("/")
+        grupos.setdefault(deporte, []).append((origen, t))
+
+    if grupos:
+        lineas.append("\n<b>📊 Partidos por deporte y fuente</b> (⭐ Flashscore es la referencia):")
+        for deporte in todos_los_deportes():
+            entradas = grupos.get(deporte)
+            if not entradas:
+                continue
+            emoji = EMOJIS_DEPORTE.get(deporte, "❓")
+            lineas.append(f"\n{emoji} <b>{deporte.capitalize()}</b>")
+            for origen, t in sorted(
+                entradas, key=lambda par: (par[0] != "flashscore", _nombre_origen(par[0]))
+            ):
+                lineas.append(f"  {_nombre_origen(origen)}: <b>{t.partidos}</b>")
 
     if resultado.errores:
         lineas.append(f"\n⚠️ <b>Errores ({len(resultado.errores)}):</b>")
