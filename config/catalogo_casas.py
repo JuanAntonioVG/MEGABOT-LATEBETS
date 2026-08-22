@@ -100,6 +100,19 @@ CATALOGO_CASAS: dict[str, CasaApuestas] = {
             "hockey": "https://www.betfair.es/sport/ice-hockey",
         },
     ),
+    "williamhill": CasaApuestas(
+        id="williamhill",
+        nombre_legible="William Hill",
+        scraper_id="williamhill",
+        deportes={
+            # Solo futbol por ahora: es la unica URL verificada en vivo.
+            # El patron parece generalizable a otros deportes
+            # (.../<deporte>/partidos/competicion/hoy/) pero no se anade
+            # ninguno mas sin comprobarlo primero en vivo, igual que el
+            # resto de casas.
+            "futbol": "https://sports.williamhill.es/betting/es-es/f%C3%BAtbol/partidos/competici%C3%B3n/hoy/",
+        },
+    ),
 }
 
 

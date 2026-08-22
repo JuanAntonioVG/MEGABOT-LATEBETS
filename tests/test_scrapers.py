@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from scrapers.betfair import BetfairScraper
 from scrapers.flashscore import FlashscoreScraper
+from scrapers.williamhill import WilliamHillScraper, _es_fecha_de_hoy
 
 
 def _html_partido_betfair(fecha_js: str) -> BeautifulSoup:
@@ -109,3 +110,52 @@ def test_flashscore_sin_ninguno_de_los_dos_patrones_devuelve_none():
     html = '<div class="event__match"><div class="event__time">20:00</div></div>'
     elemento = BeautifulSoup(html, "lxml").select_one("div.event__match")
     assert FlashscoreScraper._parsear_partido(elemento, "Liga Test", "futbol") is None
+
+
+def _html_partido_williamhill(nombres: str, hora: str = "17:00") -> BeautifulSoup:
+    html = f"""
+    <article data-testid="event-ob-ev1">
+        <div class="sp-o-market__title"><a><span class="sp-betName">{nombres}</span></a></div>
+        <div class="sp-o-market__clock"><span class="sp-o-market__clock__time">{hora}</span></div>
+    </article>
+    """
+    return BeautifulSoup(html, "lxml").select_one("article")
+
+
+def test_williamhill_separa_equipos_por_el_caracter_especial():
+    """El separador NO es un guion normal "-" sino el caracter Unicode
+    "₋" (U+208B) — con un guion normal, split() no separaria nada y el
+    partido se descartaria entero."""
+    elemento = _html_partido_williamhill("At. Madrid ₋ Villarreal")
+    partido = WilliamHillScraper._parsear_partido(elemento, "LaLiga", "futbol")
+    assert partido is not None
+    assert partido.equipo_local == "At. Madrid"
+    assert partido.equipo_visitante == "Villarreal"
+
+
+def test_williamhill_con_guion_normal_no_separa_nada():
+    elemento = _html_partido_williamhill("At. Madrid - Villarreal")
+    assert WilliamHillScraper._parsear_partido(elemento, "LaLiga", "futbol") is None
+
+
+def test_williamhill_fecha_de_hoy_acepta_dia_y_mes_correctos():
+    hoy = datetime.now()
+    texto = f"dom, {hoy.day} {['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][hoy.month - 1]}"
+    assert _es_fecha_de_hoy(texto) is True
+
+
+def test_williamhill_fecha_de_otro_dia_se_descarta():
+    """Caso real detectado en vivo: la pestaña 'Hoy' mezclaba partidos
+    bajo una cabecera fechada 'Lun, 24 Ago' (mañana) junto a los de hoy."""
+    manana = datetime.now() + timedelta(days=1)
+    meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+    texto = f"lun, {manana.day} {meses[manana.month - 1]}"
+    # Si por casualidad "mañana" cae el mismo dia+mes que hoy (no puede
+    # pasar salvo fin de año raro), el test no tendria sentido — no es
+    # el caso normal, se ignora esa arista.
+    assert _es_fecha_de_hoy(texto) is False
+
+
+def test_williamhill_fecha_no_interpretable_no_descarta_por_las_dudas():
+    assert _es_fecha_de_hoy("") is True
+    assert _es_fecha_de_hoy("formato totalmente distinto") is True
