@@ -1,5 +1,7 @@
-from core.models import Discrepancia
-from telegram_bot.notificaciones import formatear_resumen_discrepancias
+from datetime import datetime
+
+from core.models import Discrepancia, ResultadoEjecucion, TiempoEtapa
+from telegram_bot.notificaciones import formatear_resumen, formatear_resumen_discrepancias
 
 
 def _discrepancia(prioridad: str = "alta") -> Discrepancia:
@@ -52,3 +54,38 @@ def test_no_expone_detalle_de_equipos_ni_horas():
     texto = formatear_resumen_discrepancias([_discrepancia("alta")])
     assert "Equipo Local" not in texto
     assert "21:00" not in texto
+
+
+def _resultado_con_tiempos(tiempos: list[TiempoEtapa]) -> ResultadoEjecucion:
+    r = ResultadoEjecucion(inicio=datetime.now(), host="PC-TEST", paralelismo=2)
+    r.fin = datetime.now()
+    r.tiempos = tiempos
+    r.total_partidos = sum(t.partidos for t in tiempos)
+    return r
+
+
+def test_resumen_muestra_tasa_de_verificacion_por_casa():
+    """Pedido directo: recuperar lo que mostraba el bot anterior — de
+    los partidos de una casa, cuantos se pudieron verificar de verdad
+    contra Flashscore."""
+    resultado = _resultado_con_tiempos(
+        [
+            TiempoEtapa("flashscore/futbol", 10.0, 462),
+            TiempoEtapa("winamax/futbol", 20.0, 200, verificados=180, cobertura=90.0),
+        ]
+    )
+    texto = formatear_resumen(resultado, verboso=False)
+    assert "200" in texto
+    assert "180 verificados (90%)" in texto
+
+
+def test_resumen_flashscore_no_muestra_verificados():
+    resultado = _resultado_con_tiempos([TiempoEtapa("flashscore/futbol", 10.0, 462)])
+    texto = formatear_resumen(resultado, verboso=False)
+    assert "verificados" not in texto
+
+
+def test_resumen_casa_sin_partidos_no_muestra_0_verificados():
+    resultado = _resultado_con_tiempos([TiempoEtapa("winamax/futbol", 5.0, 0)])
+    texto = formatear_resumen(resultado, verboso=False)
+    assert "verificados" not in texto

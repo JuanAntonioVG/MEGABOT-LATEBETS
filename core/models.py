@@ -65,14 +65,20 @@ class EstadisticasAuditoria:
 
 @dataclass(slots=True)
 class TiempoEtapa:
-    """Cuanto tardo una etapa concreta (una casa+deporte) y cuantos
-    partidos trajo. Es la base de la telemetria que permite comparar
-    velocidad PC vs Pi y ver de un vistazo si alguna casa trae menos
-    partidos de lo esperado."""
+    """Cuanto tardo una etapa concreta (una casa+deporte), cuantos
+    partidos trajo, y cuantos de esos se pudieron verificar de verdad
+    contra Flashscore. Es la base de la telemetria que permite comparar
+    velocidad PC vs Pi, ver si alguna casa trae menos partidos de lo
+    esperado, Y ver la tasa de acierto del emparejamiento (lo que el
+    bot anterior mostraba como "cobertura de auditoría") — `verificados`
+    y `cobertura` se quedan a 0 para la etapa de Flashscore, que no se
+    audita contra si misma."""
 
     etiqueta: str
     segundos: float
     partidos: int = 0
+    verificados: int = 0
+    cobertura: float = 0.0
 
 
 @dataclass(slots=True)

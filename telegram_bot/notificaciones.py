@@ -92,7 +92,15 @@ def formatear_resumen(resultado: ResultadoEjecucion, verboso: bool) -> str:
             for origen, t in sorted(
                 entradas, key=lambda par: (par[0] != "flashscore", _nombre_origen(par[0]))
             ):
-                lineas.append(f"  {_nombre_origen(origen)}: <b>{t.partidos}</b>")
+                # Flashscore es la referencia, no se audita contra si misma —
+                # y sin partidos no hay nada que verificar tampoco.
+                if origen == "flashscore" or t.partidos == 0:
+                    lineas.append(f"  {_nombre_origen(origen)}: <b>{t.partidos}</b>")
+                else:
+                    lineas.append(
+                        f"  {_nombre_origen(origen)}: <b>{t.partidos}</b> · "
+                        f"{t.verificados} verificados ({t.cobertura:.0f}%)"
+                    )
 
     if resultado.errores:
         lineas.append(f"\n⚠️ <b>Errores ({len(resultado.errores)}):</b>")

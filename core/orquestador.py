@@ -210,16 +210,25 @@ async def ejecutar_ciclo(
                 for (casa_id, casa_nombre, _url), (partidos_casa, segundos, error) in zip(
                     casas, resultados_casas, strict=True
                 ):
-                    resultado.tiempos.append(
-                        TiempoEtapa(f"{casa_id}/{deporte}", segundos, len(partidos_casa))
-                    )
                     if error:
+                        resultado.tiempos.append(
+                            TiempoEtapa(f"{casa_id}/{deporte}", segundos, len(partidos_casa))
+                        )
                         resultado.errores.append(f"{casa_nombre}/{deporte}: {error}")
                         continue
                     resultado.total_partidos += len(partidos_casa)
 
                     discrepancias, stats = auditar(
                         ruta_db, casa_id, casa_nombre, deporte, partidos_casa, partidos_fs
+                    )
+                    resultado.tiempos.append(
+                        TiempoEtapa(
+                            f"{casa_id}/{deporte}",
+                            segundos,
+                            len(partidos_casa),
+                            stats.verificados,
+                            stats.cobertura,
+                        )
                     )
                     logger.info(
                         "[%s/%s] Auditoría: %d/%d verificados (%.0f%%), %d discrepancias",

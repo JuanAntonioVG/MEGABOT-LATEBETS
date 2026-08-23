@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS tiempos_etapa (
     etiqueta TEXT NOT NULL,
     segundos REAL NOT NULL,
     partidos INTEGER NOT NULL DEFAULT 0,
+    verificados INTEGER NOT NULL DEFAULT 0,
+    cobertura REAL NOT NULL DEFAULT 0.0,
     FOREIGN KEY (ejecucion_id) REFERENCES ejecuciones (id)
 );
 """
@@ -116,6 +118,10 @@ def _migrar_columnas_viejas(con: sqlite3.Connection) -> None:
     columnas = {fila["name"] for fila in con.execute("PRAGMA table_info(tiempos_etapa)")}
     if "partidos" not in columnas:
         con.execute("ALTER TABLE tiempos_etapa ADD COLUMN partidos INTEGER NOT NULL DEFAULT 0")
+    if "verificados" not in columnas:
+        con.execute("ALTER TABLE tiempos_etapa ADD COLUMN verificados INTEGER NOT NULL DEFAULT 0")
+    if "cobertura" not in columnas:
+        con.execute("ALTER TABLE tiempos_etapa ADD COLUMN cobertura REAL NOT NULL DEFAULT 0.0")
 
 
 @contextmanager
@@ -365,8 +371,16 @@ def cerrar_ejecucion(
 def guardar_tiempo_etapa(ruta: Path, ejecucion_id: int, tiempo: TiempoEtapa) -> None:
     with _conectar(ruta) as con:
         con.execute(
-            "INSERT INTO tiempos_etapa (ejecucion_id, etiqueta, segundos, partidos) VALUES (?, ?, ?, ?)",
-            (ejecucion_id, tiempo.etiqueta, tiempo.segundos, tiempo.partidos),
+            "INSERT INTO tiempos_etapa (ejecucion_id, etiqueta, segundos, partidos, verificados, cobertura) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                ejecucion_id,
+                tiempo.etiqueta,
+                tiempo.segundos,
+                tiempo.partidos,
+                tiempo.verificados,
+                tiempo.cobertura,
+            ),
         )
 
 
