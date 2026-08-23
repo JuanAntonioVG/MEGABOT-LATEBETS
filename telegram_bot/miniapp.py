@@ -96,13 +96,21 @@ def _fecha_compacta(iso: str | None) -> str:
     return d.strftime("%d/%m %H:%M")
 
 
-def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
+def construir_url_panel(ruta_db: Path, tab: str = "casas", offset_reportes: int = 0) -> str:
     """URL de la Mini App con el estado actual embebido en base64.
 
     `tab` preselecciona la pestaña con la que se abre el panel (ej. el
     boton "Ver detalle" de una notificacion abre directo en "reportes"
     en vez de en la pestaña por defecto) — ver docs/panel.html, que lee
     `?tab=` al arrancar.
+
+    `offset_reportes` es para el boton "Ver mas" del panel: pedido
+    directo del usuario para poder ver todo el historial de alertas, no
+    solo las LIMITE_REPORTES mas recientes. Como la pagina es estatica
+    (no puede pedir "la pagina siguiente" por su cuenta), cada tanda
+    extra es un mensaje NUEVO del bot con su propia URL — ver
+    `cb_web_app_data` en telegram_bot/bot.py, que llama aqui con el
+    offset que le mando el panel al guardar.
     """
     # Los deportes son un catalogo pequeño y estable (config/catalogo_casas.py)
     # — tanto el nombre visible ("Baloncesto") como el emoji los deriva el
@@ -128,7 +136,9 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
         for f in db.listar_alias_aprobados(ruta_db, limite=LIMITE_ALIAS)
     ]
 
-    filas_reportes = db.listar_discrepancias_recientes(ruta_db, limite=LIMITE_REPORTES)
+    filas_reportes = db.listar_discrepancias_recientes(
+        ruta_db, limite=LIMITE_REPORTES, offset=offset_reportes
+    )
     reportes = []
     for f in filas_reportes:
         ec = [_recortar(f["equipo_local_casa"]), _recortar(f["equipo_visitante_casa"])]
@@ -182,6 +192,11 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
         "rm": len(filas_reportes) >= LIMITE_REPORTES,
         "ej": ejecuciones,
     }
+    # El offset actual solo se manda si no es 0 (el caso normal) — el
+    # panel lo necesita para saber que pedir si el usuario toca "Ver
+    # mas" desde una pagina que ya no es la primera.
+    if offset_reportes:
+        estado["ro"] = offset_reportes
     crudo = json.dumps(estado, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     payload = base64.urlsafe_b64encode(crudo).decode("ascii")
     url = f"{URL_BASE_PANEL}?estado={payload}"
@@ -190,14 +205,17 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
     return url
 
 
-def aplicar_cambios(ruta_db: Path, datos_json: str) -> tuple[str, str | None, list[str]]:
+def aplicar_cambios(ruta_db: Path, datos_json: str) -> tuple[str, str | None, list[str], int | None]:
     """Aplica a la base de datos los cambios mandados desde la Mini App.
 
-    Devuelve (resumen_legible, nueva_hora_o_None, acciones_pedidas) —
-    nueva_hora solo viene rellena si el usuario cambio la hora de
-    ejecucion, para que quien llame pueda reprogramar el scheduler (esta
-    funcion no conoce el Programador, eso es responsabilidad de
-    telegram_bot/bot.py, que tambien es quien lanza `acciones_pedidas`).
+    Devuelve (resumen_legible, nueva_hora_o_None, acciones_pedidas,
+    siguiente_offset_reportes_o_None) — nueva_hora solo viene rellena si
+    el usuario cambio la hora de ejecucion, para que quien llame pueda
+    reprogramar el scheduler; siguiente_offset solo viene relleno si el
+    usuario toco "Ver más alertas" (esta funcion no conoce el
+    Programador ni sabe mandar mensajes de Telegram, eso es
+    responsabilidad de telegram_bot/bot.py, que tambien es quien lanza
+    `acciones_pedidas` y construye la URL de la siguiente pagina).
     """
     cambios = json.loads(datos_json)
     partes: list[str] = []
@@ -268,5 +286,13 @@ def aplicar_cambios(ruta_db: Path, datos_json: str) -> tuple[str, str | None, li
     if "revisar_ollama" in acciones_pedidas:
         partes.append("revisión de Ollama lanzada")
 
+    # "Ver más alertas": el propio panel calcula el offset de la
+    # siguiente tanda (offset actual + cuantas traia esta pagina, ver
+    # docs/panel.html) y lo manda aqui — no se añade a `partes` porque
+    # no es un cambio guardado, es una peticion de navegacion que
+    # telegram_bot/bot.py resuelve con un mensaje nuevo.
+    siguiente_offset = cambios.get("reportes_offset_siguiente")
+    siguiente_offset = int(siguiente_offset) if siguiente_offset is not None else None
+
     resumen = ", ".join(partes) if partes else "sin cambios"
-    return resumen, nueva_hora, acciones_pedidas
+    return resumen, nueva_hora, acciones_pedidas, siguiente_offset

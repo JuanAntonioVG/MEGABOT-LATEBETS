@@ -243,7 +243,7 @@ def construir_app(settings: Settings) -> Application:
 
         datos = update.effective_message.web_app_data.data
         try:
-            resumen, nueva_hora, acciones = miniapp.aplicar_cambios(settings.db_path, datos)
+            resumen, nueva_hora, acciones, siguiente_offset = miniapp.aplicar_cambios(settings.db_path, datos)
         except Exception as e:
             logger.exception("No se pudieron aplicar los cambios de la Mini App")
             await update.effective_message.reply_text(f"❌ No se pudo guardar: {type(e).__name__}: {e}")
@@ -274,10 +274,30 @@ def construir_app(settings: Settings) -> Application:
         # — el mismo botón visible en el chat queda apuntando ya a los
         # datos recien guardados, sin que el usuario tenga que acordarse
         # de escribir /panel otra vez para "refrescarlo".
-        url_fresca = miniapp.construir_url_panel(settings.db_path)
-        await update.effective_message.reply_text(
-            f"✅ Guardado: {resumen}", reply_markup=_teclado_panel(url_fresca)
-        )
+        #
+        # "Ver más alertas" (siguiente_offset) es distinto: no es un
+        # cambio guardado, es una peticion de la SIGUIENTE pagina del
+        # historial — la pagina es estatica y no puede pedirla por su
+        # cuenta, asi que se manda como un mensaje nuevo aparte, con su
+        # propio teclado apuntando a esa pagina concreta (tab=reportes).
+        # Si ademas hubo cambios de verdad, el resumen de "Guardado" se
+        # manda igual, sin teclado — el teclado fresco de verdad util
+        # es el de la pagina que el usuario esta pidiendo ver.
+        if siguiente_offset is not None:
+            if resumen != "sin cambios":
+                await update.effective_message.reply_text(f"✅ Guardado: {resumen}")
+            url_pagina = miniapp.construir_url_panel(
+                settings.db_path, tab="reportes", offset_reportes=siguiente_offset
+            )
+            await update.effective_message.reply_text(
+                f"📄 Alertas desde la #{siguiente_offset + 1}:",
+                reply_markup=_teclado_panel(url_pagina),
+            )
+        else:
+            url_fresca = miniapp.construir_url_panel(settings.db_path)
+            await update.effective_message.reply_text(
+                f"✅ Guardado: {resumen}", reply_markup=_teclado_panel(url_fresca)
+            )
 
     @solo_admin
     async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

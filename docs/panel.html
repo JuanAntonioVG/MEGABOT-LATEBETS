@@ -354,6 +354,7 @@
   <section class="view" id="view-reportes">
     <div class="section-label">Últimas discrepancias</div>
     <div id="reportes-lista" style="display:flex; flex-direction:column; gap:10px;"></div>
+    <div id="reportes-vermas"></div>
 
     <div class="section-label" style="margin-top:4px;">Últimas ejecuciones</div>
     <div class="card"><div id="ejecuciones-lista"></div></div>
@@ -510,8 +511,10 @@
     const hayAlias = Object.keys(decisionesAlias).length > 0 || aliasNuevos.length > 0;
     const hayAcciones = accionesArmadas.size > 0;
     const hayDescartes = reportesDescartados.size > 0;
+    const hayVerMas = verMasArmado;
     const sucio =
-      hayToggles || hayParalelismo || hayHora || hayVerboso || hayPausada || hayAlias || hayAcciones || hayDescartes;
+      hayToggles || hayParalelismo || hayHora || hayVerboso || hayPausada ||
+      hayAlias || hayAcciones || hayDescartes || hayVerMas;
     document.body.classList.toggle('dirty', sucio);
     if (tg) {
       if (sucio) { tg.MainButton.enable(); tg.MainButton.setText(textoBotonGuardar()); }
@@ -648,12 +651,32 @@
       });
     });
   }
+  // "Ver más alertas": pedido directo del usuario para poder llegar a
+  // TODO el historial, no solo las mas recientes. La pagina es
+  // estatica y no puede pedir la siguiente tanda por su cuenta, asi
+  // que este botón funciona como "Ejecutar ciclo"/"Pedir a Ollama" de
+  // mas abajo — se arma aqui y se manda al pulsar el "Guardar"
+  // principal; el bot responde con un mensaje NUEVO que ya trae esa
+  // pagina cargada (ver cb_web_app_data en telegram_bot/bot.py).
+  let verMasArmado = false;
   if (estado.rm) {
-    const aviso = document.createElement('div');
-    aviso.className = 'hint';
-    aviso.style.padding = '2px 4px 0';
-    aviso.textContent = `Mostrando las últimas ${estado.r.length}. Puede haber más en el historial.`;
-    contReportes.after(aviso);
+    const contVerMas = document.getElementById('reportes-vermas');
+    const btnVerMas = document.createElement('button');
+    btnVerMas.type = 'button';
+    btnVerMas.className = 'action-btn';
+    btnVerMas.textContent = '📄 Ver más alertas';
+    btnVerMas.addEventListener('click', () => {
+      verMasArmado = !verMasArmado;
+      btnVerMas.classList.toggle('armed', verMasArmado);
+      btnVerMas.textContent = verMasArmado ? '📄 Se pedirán al guardar ✓' : '📄 Ver más alertas';
+      marcarSucio();
+    });
+    contVerMas.appendChild(btnVerMas);
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.style.padding = '4px 4px 0';
+    hint.textContent = 'Hay más en el historial — toca el botón y pulsa "Guardar" para verlas en un mensaje nuevo.';
+    contVerMas.appendChild(hint);
   }
 
   // ---------- render ejecuciones ----------
@@ -834,6 +857,11 @@
       acciones: Array.from(accionesArmadas),
       reportes_descartados: Array.from(reportesDescartados),
     };
+    // El offset de la siguiente tanda se calcula aqui (offset actual +
+    // cuantas trae ESTA pagina) para no depender de que el cliente
+    // conozca LIMITE_REPORTES — el servidor solo necesita saber "a
+    // partir de donde" seguir.
+    if (verMasArmado) payload.reportes_offset_siguiente = (estado.ro || 0) + estado.r.length;
     if (tg) {
       tg.sendData(JSON.stringify(payload));
     } else {

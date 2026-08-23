@@ -333,17 +333,24 @@ def guardar_discrepancia(ruta: Path, d: Discrepancia, ejecucion_id: int | None =
         )
 
 
-def listar_discrepancias_recientes(ruta: Path, limite: int = 20) -> list[sqlite3.Row]:
+def listar_discrepancias_recientes(ruta: Path, limite: int = 20, offset: int = 0) -> list[sqlite3.Row]:
     """Las NO descartadas (ver `descartar_discrepancia`), alta prioridad
     primero y dentro de cada prioridad las mas recientes primero — pedido
     directo del usuario: quiere ver antes lo urgente, y poder ir
     quitando de en medio lo que ya ha revisado en vez de que se le
-    acumulen sin orden."""
+    acumulen sin orden.
+
+    `offset` es para el boton "Ver mas" del panel (ver
+    telegram_bot/miniapp.py): la pagina es estatica y no puede pedir
+    "la siguiente tanda" por su cuenta, asi que cuando el usuario lo
+    pide, el bot manda un mensaje NUEVO con una URL que ya trae la
+    siguiente pagina embebida — sin eso, `listar_discrepancias_recientes`
+    siempre devolveria las mismas N mas recientes."""
     with _conectar(ruta) as con:
         return con.execute(
             "SELECT * FROM discrepancias WHERE descartada = 0 "
-            "ORDER BY (prioridad != 'alta'), creado_en DESC LIMIT ?",
-            (limite,),
+            "ORDER BY (prioridad != 'alta'), creado_en DESC LIMIT ? OFFSET ?",
+            (limite, offset),
         ).fetchall()
 
 

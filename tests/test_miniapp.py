@@ -148,7 +148,7 @@ def test_aplicar_cambios_toggles_y_ajustes(tmp_path):
         }
     )
 
-    resumen, nueva_hora, acciones = aplicar_cambios(ruta, payload)
+    resumen, nueva_hora, acciones, _siguiente_offset = aplicar_cambios(ruta, payload)
 
     assert db.esta_activo(ruta, "bwin", "futbol") is False
     assert db.esta_activo(ruta, "winamax", "tenis") is True
@@ -181,7 +181,7 @@ def test_aplicar_cambios_alias_decisiones_y_nuevos(tmp_path):
         }
     )
 
-    resumen, _nueva_hora, _acciones = aplicar_cambios(ruta, payload)
+    resumen, _nueva_hora, _acciones, _siguiente_offset = aplicar_cambios(ruta, payload)
 
     aprobados = db.obtener_alias_aprobados(ruta)
     assert aprobados["barça"] == "fc barcelona"  # la propuesta pendiente quedo aprobada
@@ -197,7 +197,7 @@ def test_aplicar_cambios_acciones_validas_se_devuelven_y_las_invalidas_no(tmp_pa
     db.inicializar_db(ruta)
 
     payload = json.dumps({"acciones": ["ejecutar_ciclo", "borrar_todo"]})
-    resumen, _nueva_hora, acciones = aplicar_cambios(ruta, payload)
+    resumen, _nueva_hora, acciones, _siguiente_offset = aplicar_cambios(ruta, payload)
 
     assert acciones == ["ejecutar_ciclo"]
     assert "ciclo manual lanzado" in resumen
@@ -384,7 +384,7 @@ def test_aplicar_cambios_descarta_reportes(tmp_path):
     id_ = db.listar_discrepancias_recientes(ruta)[0]["id"]
 
     payload = json.dumps({"reportes_descartados": [id_]})
-    resumen, _nueva_hora, _acciones = aplicar_cambios(ruta, payload)
+    resumen, _nueva_hora, _acciones, _siguiente_offset = aplicar_cambios(ruta, payload)
 
     assert db.listar_discrepancias_recientes(ruta) == []
     assert "1 alerta" in resumen
@@ -394,8 +394,59 @@ def test_aplicar_cambios_sin_nada_no_rompe(tmp_path):
     ruta = tmp_path / "test.sqlite3"
     db.inicializar_db(ruta)
 
-    resumen, nueva_hora, acciones = aplicar_cambios(ruta, "{}")
+    resumen, nueva_hora, acciones, siguiente_offset = aplicar_cambios(ruta, "{}")
 
     assert resumen == "sin cambios"
     assert nueva_hora is None
     assert acciones == []
+    assert siguiente_offset is None
+
+
+def test_aplicar_cambios_ver_mas_reportes_devuelve_el_offset_pedido(tmp_path):
+    """Pedido directo del usuario: quiere poder ver todo el historial
+    de alertas, no solo las mas recientes — el boton "Ver más" del
+    panel manda el offset de la siguiente tanda, que aqui solo se
+    valida y se devuelve (mandar el mensaje nuevo con esa pagina es
+    responsabilidad de telegram_bot/bot.py, no de esta funcion)."""
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    payload = json.dumps({"reportes_offset_siguiente": 10})
+    _resumen, _nueva_hora, _acciones, siguiente_offset = aplicar_cambios(ruta, payload)
+
+    assert siguiente_offset == 10
+
+
+def test_construir_url_panel_con_offset_reportes_salta_los_primeros(tmp_path):
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    for i in range(3):
+        db.guardar_discrepancia(
+            ruta,
+            Discrepancia(
+                casa_id="bwin",
+                casa_nombre="Bwin",
+                deporte="futbol",
+                liga="LaLiga",
+                equipo_local_casa=f"Equipo {i}",
+                equipo_visitante_casa="B",
+                detalle_casa="21:00",
+                equipo_local_fs="A",
+                equipo_visitante_fs="B",
+                detalle_fs="19:00",
+                similitud=90.0,
+                prioridad="alta",
+            ),
+        )
+
+    estado = json.loads(
+        base64.urlsafe_b64decode(construir_url_panel(ruta, offset_reportes=2).split("estado=", 1)[1])
+    )
+    assert len(estado["r"]) == 1  # solo queda 1 de las 3 tras saltarse las 2 primeras
+    assert estado["ro"] == 2
+
+    # El offset por defecto (0) no se manda — es el caso normal, no hace
+    # falta pagar el byte de mas en cada URL.
+    estado_normal = json.loads(base64.urlsafe_b64decode(construir_url_panel(ruta).split("estado=", 1)[1]))
+    assert "ro" not in estado_normal
