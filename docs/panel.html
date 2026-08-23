@@ -229,21 +229,24 @@
   .action-btn.armed { background: var(--accent); color: var(--accent-text); }
 
   /* ---------- reportes ----------
-     Las dos horas que no cuadran van en UNA linea con flecha y desfase
-     ya calculado, en vez de dos bloques separados que habia que
-     comparar a ojo. */
+     Vuelto al formato de dos bloques (uno por fuente) tras probarlo en
+     vivo: el resumen en una sola linea con flecha resultaba mas dificil
+     de leer de un vistazo que ver cada fuente entera, separada. Los
+     colores de prioridad SI se quedan arreglados (alta = rojo/urgente,
+     baja = ambar) — antes usaban --on/--off (pensados para los
+     switches) y "alta prioridad" salia en verde, lo contrario de lo
+     intuitivo; eso no tenia que ver con el formato que se revirtio. */
   .report-card { background: var(--bg-card); border-radius: 14px; padding: 12px 14px; border-left: 4px solid var(--baja); }
   .report-card.alta { border-left-color: var(--alta); }
-  .report-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--hint); margin-bottom: 6px; }
+  .report-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--hint); margin-bottom: 8px; }
   .badge { font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.02em; color: #fff; }
   .badge-alta { background: var(--alta); }
   .badge-baja { background: var(--baja); }
-  .report-teams { font-size: 0.95rem; font-weight: 600; }
-  .report-times { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; margin: 5px 0 4px; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.98rem; }
-  .report-arrow { color: var(--hint); font-weight: 400; }
-  .report-delta { margin-left: auto; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--baja); color: #fff; }
-  .report-card.alta .report-delta { background: var(--alta); }
-  .report-ligas { font-size: 0.72rem; color: var(--hint); overflow-wrap: anywhere; }
+  .report-side { padding: 5px 0; }
+  .report-side + .report-side { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 8px; }
+  .report-side-label { font-size: 0.74rem; color: var(--hint); margin-bottom: 2px; }
+  .report-time { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 8px; }
+  .report-teams { font-size: 0.88rem; }
   .report-fecha { font-size: 0.7rem; color: var(--hint); text-align: right; margin-top: 6px; }
 
   .exec-row {
@@ -582,49 +585,30 @@
   });
 
   // ---------- render reportes ----------
-  // Desfase calculado en el cliente a partir de las dos horas "HH:MM"
-  // que ya llegan en el estado — no hace falta mandar nada nuevo.
-  function minutosDesdeHora(hhmm) {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
-    return m ? (+m[1]) * 60 + (+m[2]) : null;
-  }
-  function textoDesfase(hf, hc) {
-    const a = minutosDesdeHora(hf), b = minutosDesdeHora(hc);
-    if (a === null || b === null) return '';
-    const dif = b - a;
-    const signo = dif >= 0 ? '+' : '−';
-    const abs = Math.abs(dif);
-    const h = Math.floor(abs / 60), m = abs % 60;
-    return signo + (h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}m`);
-  }
-
+  // Formato de dos bloques (uno por fuente, Flashscore y la casa) —
+  // funciona igual para cualquier deporte, el emoji de cabecera ya
+  // viene del mismo mapa EMOJIS que usa la matriz de casas.
   const contReportes = document.getElementById('reportes-lista');
   if (estado.r.length === 0) {
     contReportes.innerHTML = '<div class="empty-state">Sin discrepancias recientes 🎉</div>';
   } else {
     estado.r.forEach(d => {
       const esAlta = d.p === 'alta';
-      const desfase = textoDesfase(d.hf, d.hc);
-      // Nombres de Flashscore solo si de verdad difieren de los de la
-      // casa (con >=70% de similitud casi siempre coinciden) — cuando
-      // difieren, ayuda a juzgar si el emparejamiento fue bueno.
-      const nombresDistintos = d.ef[0] !== d.ec[0] || d.ef[1] !== d.ec[1];
       const card = document.createElement('div');
       card.className = 'report-card ' + (esAlta ? 'alta' : 'baja');
       card.innerHTML = `
         <div class="report-header">
           <span>${EMOJIS[d.dp] || '❓'} ${Math.round(d.s)}% similitud</span>
-          <span class="badge ${esAlta ? 'badge-alta' : 'badge-baja'}">${esAlta ? 'alta' : 'baja'}</span>
+          <span class="badge ${esAlta ? 'badge-alta' : 'badge-baja'}">${esAlta ? 'alta prioridad' : 'baja prioridad'}</span>
         </div>
-        <div class="report-teams">${escapeHtml(d.ec[0])} vs ${escapeHtml(d.ec[1])}</div>
-        ${nombresDistintos ? `<div class="report-ligas">⭐ ${escapeHtml(d.ef[0])} vs ${escapeHtml(d.ef[1])}</div>` : ''}
-        <div class="report-times">
-          <span title="Flashscore">⭐ ${escapeHtml(d.hf)}</span>
-          <span class="report-arrow">→</span>
-          <span title="${escapeHtml(d.cs)}">🏠 ${escapeHtml(d.hc)}</span>
-          ${desfase ? `<span class="report-delta">${desfase}</span>` : ''}
+        <div class="report-side">
+          <div class="report-side-label">⭐ Flashscore · ${escapeHtml(d.lf)}</div>
+          <div><span class="report-time">${escapeHtml(d.hf)}</span><span class="report-teams">${escapeHtml(d.ef[0])} vs ${escapeHtml(d.ef[1])}</span></div>
         </div>
-        <div class="report-ligas">⭐ ${escapeHtml(d.lf)} · 🏠 ${escapeHtml(d.cs)}: ${escapeHtml(d.lc)}</div>
+        <div class="report-side">
+          <div class="report-side-label">🏠 ${escapeHtml(d.cs)} · ${escapeHtml(d.lc)}</div>
+          <div><span class="report-time">${escapeHtml(d.hc)}</span><span class="report-teams">${escapeHtml(d.ec[0])} vs ${escapeHtml(d.ec[1])}</span></div>
+        </div>
         <div class="report-fecha">${escapeHtml(d.t)}</div>`;
       contReportes.appendChild(card);
     });
