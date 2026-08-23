@@ -26,8 +26,25 @@ hace falta buscar un separador aparte, porque el propio atributo
 formato Javascript (`"Sat Aug 22 2026 21:30:00 GMT+0200 ..."`), asi que
 se compara directamente contra la fecha de hoy.
 
-Solo se ha verificado la pagina de futbol; baloncesto/otros deportes usan
-la misma logica pero no se han comprobado en vivo todavia.
+Ampliado y verificado en vivo el 2026-08-23 contra baloncesto (6
+partidos, dia flojo — NBA en pretemporada todavia queda fuera por el
+filtro de "hoy") y voleibol (9 partidos, incluido uno en vivo
+detectado bien): el mismo codigo generico vale sin cambios para los
+dos, no hizo falta ninguna rama especial.
+
+Ampliado el mismo dia contra TENIS y encontrado un bug real: la pagina
+traia 21 partidos en el DOM pero el scraper solo devolvia 10. Los 11
+restantes eran partidos EN VIVO de Challenger/ITF que no usan
+`div[class*="-status"]` con texto como el resto de deportes (baloncesto,
+futbol...), sino un grid de sets/juegos/puntos con clases
+`...-inPlay`/`...-serving` sin ninguna etiqueta de texto que leer — ni
+`status_tag` ni `datetime_tag` existian para esos partidos, asi que se
+perdian enteros. Añadido un tercer patron de deteccion de "en vivo" para
+ese caso (ver `SELECTOR_MARCADOR_EN_VIVO`); tras el arreglo, 14 partidos
+(quedan 92 en Flashscore ese mismo dia — Betfair simplemente no cubre
+ni de lejos el volumen de challengers/ITF/UTR de bajo perfil que agrega
+un sitio de resultados puro, eso no es un bug, es alcance real del
+catalogo de apuestas).
 """
 
 from __future__ import annotations
@@ -48,6 +65,8 @@ _FORMATO_FECHA_JS = "%a %b %d %Y %H:%M:%S"
 
 SELECTOR_PARTIDO = 'a[class*="-fixtureHeader"]'
 SELECTOR_LIGA = 'div[class*="-competitionHeader"]'
+# Grid de sets/juegos/puntos en vivo (tenis) — ver nota en _parsear_partido.
+SELECTOR_MARCADOR_EN_VIVO = '[class*="-inPlay"], [class*="-serving"]'
 
 
 def _titulo_liga(header: Tag) -> str:
@@ -113,6 +132,16 @@ class BetfairScraper(ScraperBase):
                         return None  # es de otro dia (normalmente "mañana"), no nos interesa
                 except ValueError:
                     pass  # formato inesperado: no descartamos el partido por las dudas
+        elif elemento.select_one(SELECTOR_MARCADOR_EN_VIVO):
+            # Bug real detectado en vivo el 2026-08-23 escaneando tenis:
+            # un partido en directo de Challenger/ITF no usa
+            # div[class*="-status"] con texto como el resto de deportes,
+            # sino un grid de sets/juegos/puntos con clases tipo
+            # "...-inPlay"/"...-serving" — sin este patron de respaldo,
+            # 6 de 21 partidos de la pagina se perdian enteros (0 status,
+            # 0 datetime) en vez de detectarse como en vivo.
+            estado = EstadoPartido.EN_VIVO
+            detalle = "En Vivo"
 
         if estado == EstadoPartido.DESCONOCIDO:
             return None

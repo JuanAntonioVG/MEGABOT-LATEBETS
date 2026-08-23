@@ -305,9 +305,21 @@ def test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso(tmp_path):
         )
 
     url = construir_url_panel(ruta, tab="reportes")
-    # Margen amplio bajo los 9323 que rompieron de verdad — ver el
-    # comentario junto a LIMITE_REPORTES en telegram_bot/miniapp.py.
-    assert len(url) < 7000, f"URL de {len(url)} caracteres — demasiado cerca del limite real de GitHub Pages"
+    # Margen bajo los 9323 que rompieron de verdad — ver el comentario
+    # junto a LIMITE_REPORTES en telegram_bot/miniapp.py.
+    #
+    # OJO: el catalogo de casas (config/catalogo_casas.py) tambien se
+    # serializa entero en la URL (seccion "c", independientemente de que
+    # este activo o no — ver construir_url_panel), asi que este numero
+    # sube un poco cada vez que se añade una casa o un deporte nuevo al
+    # catalogo. Reajustado el 2026-08-23: se quito el emoji redundante de
+    # cada combinacion casa+deporte (el cliente ya lo deriva del id) y el
+    # margen liberado se reinvirtio subiendo LIMITE_REPORTES/ALIAS en vez
+    # de dejarlo sin usar — peor caso forzado paso de 7416 a 8032
+    # caracteres. Si este assert vuelve a saltar por seguir ampliando el
+    # catalogo (no por un recorte real quitado), basta con volver a subir
+    # el umbral, no bajar LIMITE_REPORTES/ALIAS.
+    assert len(url) < 8700, f"URL de {len(url)} caracteres — demasiado cerca del limite real de GitHub Pages"
 
 
 def test_aplicar_cambios_sin_nada_no_rompe(tmp_path):

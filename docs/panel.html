@@ -17,6 +17,13 @@
     --track-off: #D1D5DB;
     --on: #34C759;
     --off: #FF3B30;
+    /* Para discrepancias, NO para los switches de arriba — alta
+       prioridad = rojo/urgente, baja = ambar/mas tranquilo. Antes los
+       badges de prioridad reutilizaban --on/--off (pensados para
+       "activado en verde, desactivado en rojo") y salia "alta
+       prioridad" en VERDE, lo contrario de lo intuitivo. */
+    --alta: #FF3B30;
+    --baja: #FF9500;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -107,24 +114,30 @@
     gap: 9px;
     font-size: 0.95rem;
   }
-  .row .label .emoji { font-size: 1.1rem; }
 
-  .row .bulk {
-    display: flex;
-    gap: 8px;
+  /* ---------- matriz casas x deportes ----------
+     Una celda por combinacion en vez de una fila por deporte dentro de
+     una tarjeta por casa (antes: hasta 8 filas x 6 casas de scroll).
+     Tocar la cabecera de fila/columna activa/desactiva esa casa/deporte
+     entera de un toque. */
+  .matrix-wrap { background: var(--bg-card); border-radius: 14px; overflow-x: auto; padding: 10px; }
+  table.matrix { border-collapse: collapse; width: 100%; }
+  table.matrix th, table.matrix td { text-align: center; padding: 0; }
+  th.matrix-corner { width: 1px; }
+  th.matrix-casa {
+    text-align: left; font-size: 0.82rem; font-weight: 600;
+    padding: 3px 8px 3px 2px; white-space: nowrap; cursor: pointer;
   }
-  .row .bulk button {
-    border: none;
-    background: var(--bg);
-    color: var(--hint);
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 6px 10px;
-    border-radius: 8px;
-    font-family: inherit;
+  th.matrix-deporte { font-size: 1rem; padding: 2px; cursor: pointer; min-width: 30px; }
+  td.matrix-cell { padding: 3px; }
+  .matrix-dot {
+    width: 24px; height: 24px; margin: 0 auto; border-radius: 50%;
+    border: none; font-family: inherit; background: var(--track-off);
   }
+  .matrix-dot.on { background: var(--on); }
+  .matrix-dot.na { background: none; color: var(--hint); opacity: 0.4; font-size: 0.8rem; }
 
-  /* switch */
+  /* ---------- switch (usado en Ajustes: verboso, pausar programacion) ---------- */
   .switch {
     position: relative;
     width: 46px;
@@ -215,38 +228,22 @@
   }
   .action-btn.armed { background: var(--accent); color: var(--accent-text); }
 
-  /* ---------- reportes ---------- */
-  .report-card {
-    background: var(--bg-card);
-    border-radius: 14px;
-    padding: 12px 14px;
-    border-left: 4px solid var(--off);
-  }
-  .report-card.alta { border-left-color: var(--on); }
-  .report-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.82rem;
-    color: var(--hint);
-    margin-bottom: 8px;
-  }
-  .badge {
-    font-size: 0.68rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    color: #fff;
-  }
-  .badge-alta { background: var(--on); }
-  .badge-baja { background: var(--off); }
-  .report-side { padding: 5px 0; }
-  .report-side + .report-side { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 8px; }
-  .report-side-label { font-size: 0.74rem; color: var(--hint); margin-bottom: 2px; }
-  .report-time { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 8px; }
-  .report-teams { font-size: 0.88rem; }
+  /* ---------- reportes ----------
+     Las dos horas que no cuadran van en UNA linea con flecha y desfase
+     ya calculado, en vez de dos bloques separados que habia que
+     comparar a ojo. */
+  .report-card { background: var(--bg-card); border-radius: 14px; padding: 12px 14px; border-left: 4px solid var(--baja); }
+  .report-card.alta { border-left-color: var(--alta); }
+  .report-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--hint); margin-bottom: 6px; }
+  .badge { font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.02em; color: #fff; }
+  .badge-alta { background: var(--alta); }
+  .badge-baja { background: var(--baja); }
+  .report-teams { font-size: 0.95rem; font-weight: 600; }
+  .report-times { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; margin: 5px 0 4px; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.98rem; }
+  .report-arrow { color: var(--hint); font-weight: 400; }
+  .report-delta { margin-left: auto; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--baja); color: #fff; }
+  .report-card.alta .report-delta { background: var(--alta); }
+  .report-ligas { font-size: 0.72rem; color: var(--hint); overflow-wrap: anywhere; }
   .report-fecha { font-size: 0.7rem; color: var(--hint); text-align: right; margin-top: 6px; }
 
   .exec-row {
@@ -529,98 +526,105 @@
     if (btnInicial) btnInicial.click();
   }
 
-  // ---------- render casas ----------
+  // ---------- render casas (matriz casa x deporte) ----------
+  // Tabla casa x deporte en vez de una tarjeta por casa con una fila por
+  // deporte (antes: hasta 8 filas x 6 casas de scroll). Tocar una celda
+  // cambia esa combinacion; tocar la cabecera de fila/columna
+  // activa/desactiva toda la casa/deporte de un toque (sustituye a los
+  // botones "Activar/desactivar todo" de antes y añade "todo un
+  // deporte" gratis).
   const contenedorCasas = document.getElementById('view-casas');
-  estado.c.forEach(casa => {
-    const card = document.createElement('div');
-    card.className = 'card';
+  const deportes = [...new Set(estado.c.flatMap(c => c.d.map(d => d.id)))];
+  const combo = (casaId, depId) => estado.c.find(c => c.id === casaId).d.find(d => d.id === depId);
+  const celda = (casa, depId) => {
+    const dep = combo(casa.id, depId);
+    return dep
+      ? `<button type="button" class="matrix-dot${dep.a ? ' on' : ''}" data-casa="${casa.id}" data-deporte="${depId}" aria-label="${escapeHtml(casa.n)} · ${nombreDeporte(depId)}"></button>`
+      : `<button type="button" class="matrix-dot na" disabled>–</button>`;
+  };
 
-    const titulo = document.createElement('div');
-    titulo.className = 'card-title';
-    titulo.textContent = casa.n;
-    card.appendChild(titulo);
+  contenedorCasas.innerHTML = `
+    <div class="matrix-wrap"><table class="matrix">
+      <thead><tr><th class="matrix-corner"></th>${deportes.map(id =>
+        `<th class="matrix-deporte" data-deporte="${id}" title="${nombreDeporte(id)}">${EMOJIS[id] || '❓'}</th>`
+      ).join('')}</tr></thead>
+      <tbody>${estado.c.map(casa => `
+        <tr><th class="matrix-casa" data-casa="${casa.id}">${escapeHtml(casa.n)}</th>
+          ${deportes.map(id => `<td class="matrix-cell">${celda(casa, id)}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+    <div class="hint">Toca una combinación para cambiarla. Toca una casa o un deporte para activar/desactivar todas las suyas.</div>`;
 
-    casa.d.forEach(dep => {
-      const row = document.createElement('div');
-      row.className = 'row';
+  function fijarCelda(dot, activo) {
+    dot.classList.toggle('on', activo);
+    const clave = dot.dataset.casa + ':' + dot.dataset.deporte;
+    if (activo === combo(dot.dataset.casa, dot.dataset.deporte).a) delete cambiosToggle[clave];
+    else cambiosToggle[clave] = activo;
+  }
+  // Cabecera de fila/columna: si no estan TODAS activas, las enciende
+  // todas; si ya lo estaban, las apaga (patron "seleccionar todo").
+  function fijarGrupo(selectorAtributo, valor) {
+    const dots = contenedorCasas.querySelectorAll(`.matrix-dot:not(.na)[${selectorAtributo}="${valor}"]`);
+    const activar = ![...dots].every(d => d.classList.contains('on'));
+    dots.forEach(d => fijarCelda(d, activar));
+    marcarSucio();
+  }
 
-      const label = document.createElement('div');
-      label.className = 'label';
-      label.innerHTML = `<span class="emoji">${dep.e}</span> ${nombreDeporte(dep.id)}`;
-
-      const sw = document.createElement('label');
-      sw.className = 'switch';
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = dep.a;
-      const track = document.createElement('span');
-      track.className = 'track';
-      const thumb = document.createElement('span');
-      thumb.className = 'thumb';
-      sw.append(input, track, thumb);
-
-      const clave = casa.id + ':' + dep.id;
-      input.addEventListener('change', () => {
-        if (input.checked === dep.a) delete cambiosToggle[clave];
-        else cambiosToggle[clave] = input.checked;
-        marcarSucio();
-      });
-
-      row.append(label, sw);
-      card.appendChild(row);
-    });
-
-    const bulkRow = document.createElement('div');
-    bulkRow.className = 'row';
-    bulkRow.innerHTML = '<div class="bulk"></div>';
-    const bulk = bulkRow.querySelector('.bulk');
-    const btnOn = document.createElement('button');
-    btnOn.type = 'button';
-    btnOn.textContent = '🟢 Activar todo';
-    const btnOff = document.createElement('button');
-    btnOff.type = 'button';
-    btnOff.textContent = '🔴 Desactivar todo';
-    bulk.append(btnOn, btnOff);
-    bulkRow.style.justifyContent = 'flex-end';
-    card.appendChild(bulkRow);
-
-    function fijarTodos(valor) {
-      card.querySelectorAll('input[type="checkbox"]').forEach((input, i) => {
-        input.checked = valor;
-        const dep2 = casa.d[i];
-        const clave2 = casa.id + ':' + dep2.id;
-        if (valor === dep2.a) delete cambiosToggle[clave2];
-        else cambiosToggle[clave2] = valor;
-      });
-      marcarSucio();
-    }
-    btnOn.addEventListener('click', () => fijarTodos(true));
-    btnOff.addEventListener('click', () => fijarTodos(false));
-
-    contenedorCasas.appendChild(card);
+  contenedorCasas.querySelectorAll('.matrix-dot:not(.na)').forEach(dot => {
+    dot.onclick = () => { fijarCelda(dot, !dot.classList.contains('on')); marcarSucio(); };
+  });
+  contenedorCasas.querySelectorAll('th.matrix-casa').forEach(th => {
+    th.onclick = () => fijarGrupo('data-casa', th.dataset.casa);
+  });
+  contenedorCasas.querySelectorAll('th.matrix-deporte').forEach(th => {
+    th.onclick = () => fijarGrupo('data-deporte', th.dataset.deporte);
   });
 
   // ---------- render reportes ----------
+  // Desfase calculado en el cliente a partir de las dos horas "HH:MM"
+  // que ya llegan en el estado — no hace falta mandar nada nuevo.
+  function minutosDesdeHora(hhmm) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  }
+  function textoDesfase(hf, hc) {
+    const a = minutosDesdeHora(hf), b = minutosDesdeHora(hc);
+    if (a === null || b === null) return '';
+    const dif = b - a;
+    const signo = dif >= 0 ? '+' : '−';
+    const abs = Math.abs(dif);
+    const h = Math.floor(abs / 60), m = abs % 60;
+    return signo + (h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}m`);
+  }
+
   const contReportes = document.getElementById('reportes-lista');
   if (estado.r.length === 0) {
     contReportes.innerHTML = '<div class="empty-state">Sin discrepancias recientes 🎉</div>';
   } else {
     estado.r.forEach(d => {
+      const esAlta = d.p === 'alta';
+      const desfase = textoDesfase(d.hf, d.hc);
+      // Nombres de Flashscore solo si de verdad difieren de los de la
+      // casa (con >=70% de similitud casi siempre coinciden) — cuando
+      // difieren, ayuda a juzgar si el emparejamiento fue bueno.
+      const nombresDistintos = d.ef[0] !== d.ec[0] || d.ef[1] !== d.ec[1];
       const card = document.createElement('div');
-      card.className = 'report-card ' + (d.p === 'alta' ? 'alta' : 'baja');
+      card.className = 'report-card ' + (esAlta ? 'alta' : 'baja');
       card.innerHTML = `
         <div class="report-header">
           <span>${EMOJIS[d.dp] || '❓'} ${Math.round(d.s)}% similitud</span>
-          <span class="badge ${d.p === 'alta' ? 'badge-alta' : 'badge-baja'}">${d.p === 'alta' ? 'alta prioridad' : 'baja prioridad'}</span>
+          <span class="badge ${esAlta ? 'badge-alta' : 'badge-baja'}">${esAlta ? 'alta' : 'baja'}</span>
         </div>
-        <div class="report-side">
-          <div class="report-side-label">⭐ Flashscore · ${escapeHtml(d.lf)}</div>
-          <div><span class="report-time">${escapeHtml(d.hf)}</span><span class="report-teams">${escapeHtml(d.ef[0])} vs ${escapeHtml(d.ef[1])}</span></div>
+        <div class="report-teams">${escapeHtml(d.ec[0])} vs ${escapeHtml(d.ec[1])}</div>
+        ${nombresDistintos ? `<div class="report-ligas">⭐ ${escapeHtml(d.ef[0])} vs ${escapeHtml(d.ef[1])}</div>` : ''}
+        <div class="report-times">
+          <span title="Flashscore">⭐ ${escapeHtml(d.hf)}</span>
+          <span class="report-arrow">→</span>
+          <span title="${escapeHtml(d.cs)}">🏠 ${escapeHtml(d.hc)}</span>
+          ${desfase ? `<span class="report-delta">${desfase}</span>` : ''}
         </div>
-        <div class="report-side">
-          <div class="report-side-label">🏠 ${escapeHtml(d.cs)} · ${escapeHtml(d.lc)}</div>
-          <div><span class="report-time">${escapeHtml(d.hc)}</span><span class="report-teams">${escapeHtml(d.ec[0])} vs ${escapeHtml(d.ec[1])}</span></div>
-        </div>
+        <div class="report-ligas">⭐ ${escapeHtml(d.lf)} · 🏠 ${escapeHtml(d.cs)}: ${escapeHtml(d.lc)}</div>
         <div class="report-fecha">${escapeHtml(d.t)}</div>`;
       contReportes.appendChild(card);
     });

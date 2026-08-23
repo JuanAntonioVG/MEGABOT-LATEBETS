@@ -18,7 +18,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from config.catalogo_casas import CATALOGO_CASAS, EMOJIS_DEPORTE
+from config.catalogo_casas import CATALOGO_CASAS
 from core import db
 
 # GitHub Pages del repo — ver README para como activarlo (Settings > Pages).
@@ -34,17 +34,18 @@ URL_BASE_PANEL = "https://juanantoniovg.github.io/MEGABOT-LATEBETS/panel.html"
 # la URL real llego a 9323 caracteres (medido contra la base de datos
 # real del proyecto) y ya no cargaba.
 #
-# Los numeros de aqui abajo NO son una estimacion, se han medido dos
-# veces (y reajustado una segunda vez tras la primera noche real de
-# uso, que con LIMITE_REPORTES=5 se quedaba corta: hubo una ejecucion
-# con 9 discrepancias reales y el panel solo enseñaba 5). Con los
-# valores actuales: caso real de esa misma noche (9 discrepancias) ~5150
-# caracteres; peor caso forzado (reportes + alias + ejecuciones al
-# limite, con nombres largos truncados al maximo en todos los campos)
-# ~6700 caracteres — bastante por debajo de los 9323 que rompieron.
-LIMITE_REPORTES = 10
+# Los numeros de aqui abajo NO son una estimacion, se han medido
+# repetidas veces contra el peor caso real (ver el test
+# `test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso`).
+# Reajustados el 2026-08-23 al quitar el emoji redundante de cada
+# combinacion casa+deporte (ver el comentario junto a `casas` en
+# `construir_url_panel` mas abajo): eso liberó ~600 caracteres de margen,
+# que se han reinvertido subiendo estos limites (antes 10/5) en vez de
+# dejarlos sin usar — peor caso forzado ahora ~8032 caracteres, todavia
+# con margen claro bajo los 9323 que rompieron de verdad.
+LIMITE_REPORTES = 13
 LIMITE_EJECUCIONES = 4
-LIMITE_ALIAS = 5
+LIMITE_ALIAS = 6
 
 # Cualquier nombre de equipo/liga/alias por encima de esto se recorta con
 # "…" al embeberlo en la URL — proteccion dura contra el mismo problema
@@ -88,18 +89,17 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
     `?tab=` al arrancar.
     """
     # Los deportes son un catalogo pequeño y estable (config/catalogo_casas.py)
-    # — el nombre visible ("Baloncesto") lo deriva el propio panel.html a
-    # partir del id en vez de mandarlo repetido en cada casa; con ~35
-    # combinaciones casa+deporte ese campo de mas pesaba lo suyo.
+    # — tanto el nombre visible ("Baloncesto") como el emoji los deriva el
+    # propio panel.html a partir del id (tiene su propio espejo de
+    # EMOJIS_DEPORTE, ver el comentario en docs/panel.html) en vez de
+    # mandarlos repetidos en cada casa; con ~35 combinaciones casa+deporte
+    # cada campo de mas ahi pesaba lo suyo. Quitar el emoji aqui liberó
+    # ~500 caracteres de margen bajo el limite de GitHub Pages — ver
+    # LIMITE_REPORTES mas abajo.
     casas = []
     for casa in CATALOGO_CASAS.values():
         deportes = [
-            {
-                "id": deporte,
-                "e": EMOJIS_DEPORTE.get(deporte, "❓"),
-                "a": db.esta_activo(ruta_db, casa.id, deporte),
-            }
-            for deporte in casa.deportes
+            {"id": deporte, "a": db.esta_activo(ruta_db, casa.id, deporte)} for deporte in casa.deportes
         ]
         casas.append({"id": casa.id, "n": casa.nombre_legible, "d": deportes})
 

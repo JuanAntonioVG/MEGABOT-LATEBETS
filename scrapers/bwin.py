@@ -34,9 +34,32 @@ hace nada si el boton no existe. Waterpolo comprobado tambien: 0
 partidos, pero confirmado con el propio texto de la pagina ("Lo
 sentimos, no hay eventos disponibles actualmente para este filtro") —
 no es un fallo de selector, es que ahora mismo no hay nada que scrapear.
+
+Futsal verificado en vivo el 2026-08-23: mismo resultado que waterpolo
+(0 partidos, mismo texto de "no hay eventos" en la pagina) — dia flojo
+real, no un fallo.
+
+BUG REAL detectado en vivo el mismo dia contra HOCKEY: el scraper
+devolvia 5 "partidos de hoy" (Panthers vs Hurricanes, Canadiens vs Maple
+Leafs...) con liga "Desconocida" y horas como "23:08"/"01:08" — daban
+mal rollo, y con razon: son partidos de PRETEMPORADA DE LA NHL de finales
+de SEPTIEMBRE, no de hoy. Causa de fondo: cuando no hay ningun partido
+para hoy, `ms-event-group` en vez de mostrar "no hay eventos" (como en
+waterpolo/futsal ese mismo dia) agrupa por FECHA futura
+(`ms-date-group-details`, texto tipo "martes - 29/9/26") en vez de por
+liga (`span.cgd-title`) — y como el codigo anterior no miraba esa fecha
+para nada, se colaban partidos de dentro de mas de un mes como si fueran
+de hoy. Arreglado filtrando cualquier grupo cuya cabecera de fecha no
+sea la de hoy (ver `_es_fecha_de_hoy`); los grupos SIN cabecera de fecha
+(el caso normal, agrupados por liga) no se tocan. Tras el arreglo:
+0 partidos de hockey ese dia (correcto — la NHL no ha empezado, y las
+ligas europeas tampoco).
 """
 
 from __future__ import annotations
+
+import re
+from datetime import datetime
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -47,9 +70,23 @@ from scrapers.base import ScraperBase, aceptar_cookies, extraer_hora, hacer_clic
 
 SELECTOR_GRUPO = "ms-event-group"
 SELECTOR_TITULO_LIGA = "span.cgd-title"
+SELECTOR_FECHA_GRUPO = "ms-date-group-details"
 SELECTOR_PARTIDO_FUTBOL = "div.grid-event-wrapper"
 SELECTOR_PARTIDO_BALONCESTO = "ms-six-pack-event"
 SELECTOR_MAS_EVENTOS = "ms-grid-show-more"
+
+
+def _es_fecha_de_hoy(texto: str) -> bool:
+    """ "martes - 29/9/26" -> compara dia y mes contra la fecha real de
+    hoy. Si el texto no se puede interpretar, NO se descarta el grupo
+    (mejor un falso positivo que perder partidos reales por un cambio
+    de formato)."""
+    m = re.search(r"(\d{1,2})/(\d{1,2})/\d{2,4}", texto)
+    if not m:
+        return True
+    dia, mes = int(m.group(1)), int(m.group(2))
+    hoy = datetime.now()
+    return dia == hoy.day and mes == hoy.month
 
 
 @registrar
@@ -78,6 +115,9 @@ class BwinScraper(ScraperBase):
 
         partidos: list[Partido] = []
         for grupo in soup.select(SELECTOR_GRUPO):
+            fecha_tag = grupo.select_one(SELECTOR_FECHA_GRUPO)
+            if fecha_tag and not _es_fecha_de_hoy(fecha_tag.get_text(strip=True)):
+                continue
             titulo_tag = grupo.select_one(SELECTOR_TITULO_LIGA)
             liga = titulo_tag.get_text(strip=True) if titulo_tag else "Desconocida"
             for elemento in grupo.select(selector_partido):

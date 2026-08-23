@@ -6,10 +6,14 @@ from datetime import datetime, timedelta
 
 from bs4 import BeautifulSoup
 
+from core.models import EstadoPartido
 from scrapers.betfair import BetfairScraper
+from scrapers.bwin import _es_fecha_de_hoy as _bwin_es_fecha_de_hoy
 from scrapers.flashscore import FlashscoreScraper
+from scrapers.pokerstars import PokerstarsScraper
 from scrapers.sportium import SportiumScraper
 from scrapers.williamhill import WilliamHillScraper, _es_fecha_de_hoy
+from scrapers.winamax import _es_de_otro_dia
 
 
 def _html_partido_betfair(fecha_js: str) -> BeautifulSoup:
@@ -50,6 +54,37 @@ def test_betfair_no_descarta_si_el_formato_de_fecha_es_inesperado():
     elemento = _html_partido_betfair("2026-08-22T21:30:00Z")  # formato ISO, no el JS esperado
     partido = BetfairScraper._parsear_partido(elemento, "Liga Test", "futbol")
     assert partido is not None
+
+
+def test_betfair_detecta_en_vivo_por_el_grid_de_tenis_sin_status_ni_datetime():
+    """Bug real detectado en vivo el 2026-08-23 escaneando tenis: un
+    partido de Challenger/ITF en directo no tiene ni div[class*="-status"]
+    con texto ni time[class*="-datetime"] — el unico indicador es un grid
+    de sets/juegos/puntos con clases "...-inPlay"/"...-serving". Sin el
+    patron de respaldo, 11 de 21 partidos de esa pagina se perdian
+    enteros en vez de marcarse en vivo."""
+    html = """
+    <a class="_1af1df63fd08a1c6-fixtureHeader">
+        <span class="_443c5e6894fef559-teamName">Equipo Local</span>
+        <span class="_443c5e6894fef559-teamName">Equipo Visitante</span>
+        <div class="_90346fd614c6253a-square _90346fd614c6253a-inPlay">15</div>
+    </a>
+    """
+    elemento = BeautifulSoup(html, "lxml").select_one("a")
+    partido = BetfairScraper._parsear_partido(elemento, "Liga Test", "tenis")
+    assert partido is not None
+    assert partido.estado == EstadoPartido.EN_VIVO
+
+
+def test_betfair_sin_status_ni_datetime_ni_marcador_en_vivo_descarta_el_partido():
+    html = """
+    <a class="_1af1df63fd08a1c6-fixtureHeader">
+        <span class="_443c5e6894fef559-teamName">Equipo Local</span>
+        <span class="_443c5e6894fef559-teamName">Equipo Visitante</span>
+    </a>
+    """
+    elemento = BeautifulSoup(html, "lxml").select_one("a")
+    assert BetfairScraper._parsear_partido(elemento, "Liga Test", "tenis") is None
 
 
 def _html_partido_flashscore_futbol() -> BeautifulSoup:
@@ -196,3 +231,203 @@ def test_sportium_encuentra_la_fecha_fuera_del_enlace():
 def test_sportium_sin_fecha_descarta_el_partido():
     elemento = _html_partido_sportium(con_fecha=False)
     assert SportiumScraper._parsear_partido(elemento, "LaLiga", "futbol") is None
+
+
+def _html_partido_williamhill_clasico_normal(en_vivo: bool = False) -> BeautifulSoup:
+    """Patron real de la plantilla "clasica" (baloncesto) para deportes que
+    no son de EEUU: nombres en dos <span> dentro de .btmarket__link-name,
+    visto en vivo el 2026-08-23 contra 'Amistosos internacionales'."""
+    clase_live = "wh-label btmarket__live go area-livescore event__status"
+    if not en_vivo:
+        clase_live += " displayNone"
+    html = f"""
+    <div class="event" id="OB_EV1" data-startdatetime="2026-08-23T15:15:00.000Z">
+        <div class="btmarket__content">
+            <label class="{clase_live}">00:00</label>
+            <div class="btmarket__link-name btmarket__link-name--2-rows">
+                <span>Georgia</span> <span>Israel</span>
+            </div>
+            <time datetime="2026-08-23T15:15:00+00:00">23 ago. 17:15</time>
+        </div>
+    </div>
+    """
+    return BeautifulSoup(html, "lxml").select_one("div.event")
+
+
+def _html_partido_williamhill_clasico_us() -> BeautifulSoup:
+    """Patron real de la plantilla "clasica" para deportes de EEUU (WNBA):
+    nombres en <p> dentro de .event__team, no en .btmarket__link-name."""
+    html = """
+    <section class="markettable__event event" id="OB_EV2" data-startdatetime="2026-08-23T20:00:00.000Z">
+        <div class="event__team"><p>Seattle Storm</p></div>
+        <div class="event__team"><p>Dallas Wings</p></div>
+        <time datetime="2026-08-23T20:00:00+00:00">23 ago. 22:00</time>
+    </section>
+    """
+    return BeautifulSoup(html, "lxml").select_one("section")
+
+
+def test_williamhill_clasico_extrae_nombres_del_patron_normal():
+    elemento = _html_partido_williamhill_clasico_normal()
+    partido = WilliamHillScraper._parsear_partido_clasico(elemento, "Amistosos internacionales", "baloncesto")
+    assert partido is not None
+    assert partido.equipo_local == "Georgia"
+    assert partido.equipo_visitante == "Israel"
+    assert partido.estado == EstadoPartido.PROGRAMADO
+    assert partido.detalle_estado == "17:15"
+
+
+def test_williamhill_clasico_extrae_nombres_del_patron_us():
+    """Regresion directa del bug real: sin el patron de respaldo
+    '.event__team > p', WNBA devolvia 0 partidos pese a estar presentes
+    en la pagina (los nombres no viven en .btmarket__link-name aqui)."""
+    elemento = _html_partido_williamhill_clasico_us()
+    partido = WilliamHillScraper._parsear_partido_clasico(elemento, "WNBA", "baloncesto")
+    assert partido is not None
+    assert partido.equipo_local == "Seattle Storm"
+    assert partido.equipo_visitante == "Dallas Wings"
+
+
+def test_williamhill_clasico_detecta_en_vivo_por_la_clase_displaynone():
+    """Bug real evitado: el label del marcador en vivo SIEMPRE esta en el
+    DOM, solo se distingue por si tiene la clase 'displayNone' o no."""
+    elemento = _html_partido_williamhill_clasico_normal(en_vivo=True)
+    partido = WilliamHillScraper._parsear_partido_clasico(elemento, "Liga Test", "baloncesto")
+    assert partido is not None
+    assert partido.estado == EstadoPartido.EN_VIVO
+    assert partido.detalle_estado == "00:00"
+
+
+def test_williamhill_clasico_sin_ninguno_de_los_dos_patrones_devuelve_none():
+    html = (
+        '<div class="event" id="OB_EV3"><time datetime="2026-08-23T17:15:00+00:00">23 ago. 17:15</time></div>'
+    )
+    elemento = BeautifulSoup(html, "lxml").select_one("div.event")
+    assert WilliamHillScraper._parsear_partido_clasico(elemento, "Liga Test", "baloncesto") is None
+
+
+def _html_evento_pokerstars_programado() -> BeautifulSoup:
+    html = """
+    <li data-testid="event">
+        <span class="_ee287b1"><span>-</span>Portugal (F)</span>
+        <span class="_ee287b1">Bélgica (F)</span>
+        <time datetime="13:30">13:30</time>
+    </li>
+    """
+    return BeautifulSoup(html, "lxml").select_one("li")
+
+
+def _html_evento_pokerstars_en_vivo() -> BeautifulSoup:
+    """Patron real de un partido EN VIVO visto navegando voleibol
+    competicion a competicion el 2026-08-23: no usa span._ee287b1 en
+    absoluto, sino [data-testid="scoreboard-participant-name"], y no
+    tiene time[datetime] — bug real: sin este patron de respaldo el
+    partido se perdia entero en vez de marcarse en vivo."""
+    html = """
+    <li data-testid="event">
+        <span data-testid="scoreboard-participant-name">Japón (F)</span>
+        <span data-testid="scoreboard-participant-name">Corea del Sur (F)</span>
+    </li>
+    """
+    return BeautifulSoup(html, "lxml").select_one("li")
+
+
+def test_pokerstars_evento_lista_patron_programado():
+    elemento = _html_evento_pokerstars_programado()
+    partido = PokerstarsScraper._parsear_evento_lista(elemento, "Liga Test", "voleibol")
+    assert partido is not None
+    assert partido.equipo_local == "Portugal (F)"
+    assert partido.equipo_visitante == "Bélgica (F)"
+    assert partido.estado == EstadoPartido.PROGRAMADO
+
+
+def test_pokerstars_evento_lista_patron_en_vivo():
+    elemento = _html_evento_pokerstars_en_vivo()
+    partido = PokerstarsScraper._parsear_evento_lista(elemento, "Liga Test", "voleibol")
+    assert partido is not None
+    assert partido.equipo_local == "Japón (F)"
+    assert partido.equipo_visitante == "Corea del Sur (F)"
+    assert partido.estado == EstadoPartido.EN_VIVO
+
+
+def test_pokerstars_evento_lista_sin_ningun_patron_devuelve_none():
+    html = '<li data-testid="event"><time datetime="13:30">13:30</time></li>'
+    elemento = BeautifulSoup(html, "lxml").select_one("li")
+    assert PokerstarsScraper._parsear_evento_lista(elemento, "Liga Test", "voleibol") is None
+
+
+def test_pokerstars_enlaces_competiciones_filtra_por_ruta_base():
+    """Solo deben aceptarse enlaces que cuelguen de la misma ruta que la
+    URL de partida — asi no hace falta depender de las clases CSS
+    ofuscadas del contenedor de competiciones."""
+    html = """
+    <details data-testid="sports-expandable-accordion">
+        <ul>
+            <li><a href="/sports/voleibol/998917/campeonato-de-europa-femenino/12370950/">Campeonato de Europa</a></li>
+            <li><a href="/sports/futbol/1/otra-cosa/999/">No es de este deporte</a></li>
+        </ul>
+    </details>
+    """
+    soup = BeautifulSoup(html, "lxml")
+    enlaces = PokerstarsScraper._enlaces_competiciones(
+        soup, "https://www.pokerstars.es/sports/voleibol/998917/"
+    )
+    assert len(enlaces) == 1
+    assert enlaces[0][1] == "Campeonato de Europa"
+    assert enlaces[0][0] == (
+        "https://www.pokerstars.es/sports/voleibol/998917/campeonato-de-europa-femenino/12370950/"
+    )
+
+
+def test_bwin_fecha_de_hoy_acepta_dia_y_mes_correctos():
+    hoy = datetime.now()
+    texto = f"martes - {hoy.day}/{hoy.month}/26"
+    assert _bwin_es_fecha_de_hoy(texto) is True
+
+
+def test_bwin_fecha_de_otro_dia_se_descarta():
+    """Caso real detectado en vivo el 2026-08-23: sin partidos de hockey
+    para hoy, Bwin agrupaba por fecha (en vez de por liga) y mostraba
+    partidos de pretemporada de la NHL de mas de un mes de distancia como
+    si fueran de "hoy" — 5 partidos con liga "Desconocida" que en
+    realidad eran del 29/9, no del dia de la prueba."""
+    manana = datetime.now() + timedelta(days=1)
+    texto = f"miércoles - {manana.day}/{manana.month}/26"
+    assert _bwin_es_fecha_de_hoy(texto) is False
+
+
+def test_bwin_fecha_no_interpretable_no_descarta_por_las_dudas():
+    assert _bwin_es_fecha_de_hoy("") is True
+    assert _bwin_es_fecha_de_hoy("formato totalmente distinto") is True
+
+
+def _html_tarjeta_winamax(con_etiqueta_fecha: bool) -> BeautifulSoup:
+    etiqueta = '<div class="sc-faHdxz bssBit">3 sep.</div>' if con_etiqueta_fecha else ""
+    html = f"""
+    <div data-testid="match-card-1">
+        <span class="sc-huGNkN">Liga de Campeones</span>
+        <div class="sc-brsddS">Tappara Tampere</div>
+        <div class="sc-hbWFOe bfVxfn">
+            {etiqueta}
+            <div class="sc-hmMbRg lIZsQ">17:30</div>
+        </div>
+        <div class="sc-brsddS">Bili Tygri Liberec</div>
+    </div>
+    """
+    return BeautifulSoup(html, "lxml").select_one("div[data-testid]")
+
+
+def test_winamax_tarjeta_de_hoy_no_tiene_etiqueta_de_fecha():
+    elemento = _html_tarjeta_winamax(con_etiqueta_fecha=False)
+    assert _es_de_otro_dia(elemento) is False
+
+
+def test_winamax_tarjeta_con_etiqueta_de_fecha_es_de_otro_dia():
+    """Bug real detectado en vivo el 2026-08-23 escaneando hockey: la
+    etiqueta de fecha (`div.sc-faHdxz`) esta ANIDADA dentro de la
+    tarjeta, no como hermano en el DOM — tratarla como un separador
+    aparte dejaba colar la primera tarjeta de un dia futuro (aqui,
+    "3 sep.") como si fuera de hoy, porque su propia etiqueta solo se
+    veia DESPUES de haber aceptado ya la tarjeta."""
+    elemento = _html_tarjeta_winamax(con_etiqueta_fecha=True)
+    assert _es_de_otro_dia(elemento) is True

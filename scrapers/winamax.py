@@ -25,12 +25,12 @@ bot anterior:
    devolver menos partidos programados de los esperados.
 
 3. El listado NO esta limitado a hoy: sigue scrolleando hacia partidos de
-   "Mañana" y dias siguientes. Detectado en vivo un separador de dia
-   (`<div>Mañana</div>`) en mitad del scroll. Como el bot solo debe
-   avisar de discrepancias del dia en curso, se para la acumulacion en
-   cuanto aparece ese separador — todo lo anterior en el documento se
-   asume de hoy (no hay separador explicito de "Hoy", los partidos de hoy
-   simplemente empiezan sin cabecera).
+   "Mañana" y dias siguientes. CORREGIDO el 2026-08-23 (bug real
+   detectado escaneando hockey, ver mas abajo): `SELECTOR_DIVISOR_FECHA`
+   no es un separador HERMANO entre tarjetas — es una etiqueta ANIDADA
+   DENTRO de cada tarjeta que NO es de hoy ("Mañana", "3 sep."...); una
+   tarjeta de hoy simplemente no la tiene. Se corta la acumulacion en
+   cuanto una tarjeta trae esa etiqueta propia.
 
 Ampliado y verificado en vivo el mismo dia contra baloncesto y voleibol:
 a diferencia de Bwin/Pokerstars, este fichero nunca tuvo ninguna rama
@@ -40,6 +40,24 @@ generico ya devolvia baloncesto real (4 partidos, con el separador de
 voleibol (comprobado que la tarjeta SI existe en la pagina aunque en el
 momento exacto de una prueba anterior no hubiera ninguna — deporte de
 poco volumen, no un fallo del selector).
+
+Waterpolo verificado en vivo el 2026-08-23: 0 partidos, pero confirmado
+que es un dia real sin partidos (Flashscore, la referencia, tambien
+daba 0 ese mismo dia — "Hoy no se juega ningún partido", proximo dia de
+partidos 28.08.2026) y no un fallo de scraper.
+
+Futsal verificado en vivo el mismo dia: 1 partido real (River Plate vs
+Glorias, Argentina - División de Honor), sin cambios de codigo.
+
+Hockey: aqui fue donde salio a la luz el BUG REAL del punto 3 de arriba.
+Antes del arreglo, el scraper devolvia 1 "partido de hoy" (Tappara
+Tampere vs Bili Tygri Liberec) que en realidad era del 3 de septiembre
+— confirmado inspeccionando la tarjeta: su propio texto interno ya
+incluia "3 sep." (en `div.sc-faHdxz`, anidado dentro de la tarjeta, no
+al lado). Ese dia no habia NINGUN partido de hockey de verdad para hoy
+en Winamax — coincide con Bwin (arreglado el mismo bug conceptual ese
+mismo dia, ver scrapers/bwin.py) y Betfair/Pokerstars, tambien en 0.
+Tras el arreglo: 0 partidos, correcto.
 """
 
 from __future__ import annotations
@@ -57,6 +75,13 @@ logger = logging.getLogger(__name__)
 
 SELECTOR_TARJETA = 'div[data-testid^="match-card-"]'
 SELECTOR_DIVISOR_FECHA = "div.sc-faHdxz"
+
+
+def _es_de_otro_dia(tarjeta: Tag) -> bool:
+    """True si la tarjeta trae su propia etiqueta de fecha ("Mañana",
+    "3 sep."...) anidada dentro — las tarjetas de HOY no la llevan. Ver
+    el aviso de bug real en el docstring del modulo."""
+    return tarjeta.select_one(SELECTOR_DIVISOR_FECHA) is not None
 
 
 @registrar
@@ -84,21 +109,27 @@ class WinamaxScraper(ScraperBase):
             soup = BeautifulSoup(html, "lxml")
             nuevos = 0
 
-            # Recorremos tarjetas Y divisores de dia EN ORDEN DE DOCUMENTO,
-            # para poder cortar en cuanto aparezca un divisor que no sea
-            # "Hoy" — todo lo que venga a partir de ahi (en esta y en
-            # futuras capturas) es de otro dia y no nos interesa.
-            combinados = soup.select(f"{SELECTOR_DIVISOR_FECHA}, {SELECTOR_TARJETA}")
-            ids_divisor = {id(el) for el in soup.select(SELECTOR_DIVISOR_FECHA)}
+            # BUG REAL detectado en vivo el 2026-08-23 escaneando hockey:
+            # `SELECTOR_DIVISOR_FECHA` NO es un separador hermano entre
+            # secciones como se penso al escribir esto — es una etiqueta
+            # ANIDADA DENTRO de cada tarjeta (visible solo en tarjetas que
+            # NO son de hoy: "Mañana", "3 sep.", etc. — las de hoy no
+            # llevan ninguna). Tratarlo como hermano en `soup.select()`
+            # combinado si funcionaba mientras el primer partido de la
+            # lista fuera de verdad de hoy, pero si NINGUN partido es de
+            # hoy (dia flojo, como hockey ese dia) el primer partido de
+            # la lista ya es de otro dia — y como su propia etiqueta
+            # aparece DESPUES de el en el recorrido combinado, se contaba
+            # como "de hoy" por error antes de poder rechazarlo (1 partido
+            # de hockey de "3 sep." colandose como si fuera de hoy).
+            # Arreglado mirando la etiqueta DENTRO de cada tarjeta
+            # directamente, sin depender del orden de recorrido.
             cruzo_a_otro_dia = False
 
-            for elemento in combinados:
-                if id(elemento) in ids_divisor:
-                    texto_divisor = elemento.get_text(strip=True).lower()
-                    if texto_divisor and not texto_divisor.startswith("hoy"):
-                        cruzo_a_otro_dia = True
-                        break
-                    continue
+            for elemento in soup.select(SELECTOR_TARJETA):
+                if _es_de_otro_dia(elemento):
+                    cruzo_a_otro_dia = True
+                    break
 
                 tarjeta_id = elemento.get("data-testid", "")
                 if tarjeta_id in partidos_por_id:
