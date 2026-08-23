@@ -139,3 +139,48 @@ def test_ejecuciones_y_tiempos(tmp_path):
     discrepancias = db.listar_discrepancias_recientes(ruta)
     assert len(discrepancias) == 1
     assert discrepancias[0]["casa_nombre"] == "Bwin"
+
+
+def _discrepancia(prioridad: str, equipo_local: str = "A") -> Discrepancia:
+    return Discrepancia(
+        casa_id="bwin",
+        casa_nombre="Bwin",
+        deporte="futbol",
+        liga="LaLiga",
+        equipo_local_casa=equipo_local,
+        equipo_visitante_casa="B",
+        detalle_casa="21:00",
+        equipo_local_fs=equipo_local,
+        equipo_visitante_fs="B",
+        detalle_fs="19:00",
+        similitud=90.0,
+        prioridad=prioridad,
+    )
+
+
+def test_listar_discrepancias_pone_alta_prioridad_primero(tmp_path):
+    """Pedido directo del usuario: quiere ver antes lo urgente. Se
+    guarda a proposito la de baja prioridad ANTES (mas antigua), para
+    comprobar que el orden es de verdad por prioridad y no solo por
+    fecha."""
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+    db.guardar_discrepancia(ruta, _discrepancia("baja", equipo_local="Baja"))
+    db.guardar_discrepancia(ruta, _discrepancia("alta", equipo_local="Alta"))
+
+    discrepancias = db.listar_discrepancias_recientes(ruta)
+    assert [d["equipo_local_casa"] for d in discrepancias] == ["Alta", "Baja"]
+
+
+def test_descartar_discrepancia_la_oculta_de_la_lista(tmp_path):
+    """Pedido directo del usuario: poder "eliminar" (descartar, sin
+    perder el historial en la base de datos) las alertas que ya no le
+    sirven, para llevar un orden."""
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+    db.guardar_discrepancia(ruta, _discrepancia("alta"))
+    id_ = db.listar_discrepancias_recientes(ruta)[0]["id"]
+
+    db.descartar_discrepancia(ruta, id_)
+
+    assert db.listar_discrepancias_recientes(ruta) == []

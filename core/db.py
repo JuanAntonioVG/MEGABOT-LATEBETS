@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS discrepancias (
     detalle_fs TEXT,
     similitud REAL,
     prioridad TEXT,
-    creado_en TEXT NOT NULL
+    creado_en TEXT NOT NULL,
+    descartada INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS ejecuciones (
@@ -122,6 +123,10 @@ def _migrar_columnas_viejas(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE tiempos_etapa ADD COLUMN verificados INTEGER NOT NULL DEFAULT 0")
     if "cobertura" not in columnas:
         con.execute("ALTER TABLE tiempos_etapa ADD COLUMN cobertura REAL NOT NULL DEFAULT 0.0")
+
+    columnas_discrepancias = {fila["name"] for fila in con.execute("PRAGMA table_info(discrepancias)")}
+    if "descartada" not in columnas_discrepancias:
+        con.execute("ALTER TABLE discrepancias ADD COLUMN descartada INTEGER NOT NULL DEFAULT 0")
 
 
 @contextmanager
@@ -329,10 +334,22 @@ def guardar_discrepancia(ruta: Path, d: Discrepancia, ejecucion_id: int | None =
 
 
 def listar_discrepancias_recientes(ruta: Path, limite: int = 20) -> list[sqlite3.Row]:
+    """Las NO descartadas (ver `descartar_discrepancia`), alta prioridad
+    primero y dentro de cada prioridad las mas recientes primero — pedido
+    directo del usuario: quiere ver antes lo urgente, y poder ir
+    quitando de en medio lo que ya ha revisado en vez de que se le
+    acumulen sin orden."""
     with _conectar(ruta) as con:
         return con.execute(
-            "SELECT * FROM discrepancias ORDER BY creado_en DESC LIMIT ?", (limite,)
+            "SELECT * FROM discrepancias WHERE descartada = 0 "
+            "ORDER BY (prioridad != 'alta'), creado_en DESC LIMIT ?",
+            (limite,),
         ).fetchall()
+
+
+def descartar_discrepancia(ruta: Path, id_: int) -> None:
+    with _conectar(ruta) as con:
+        con.execute("UPDATE discrepancias SET descartada = 1 WHERE id = ?", (id_,))
 
 
 # --------------------------------------------------------------- ejecuciones

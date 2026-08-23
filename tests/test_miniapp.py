@@ -348,15 +348,46 @@ def test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso(tmp_path):
     # serializa entero en la URL (seccion "c", independientemente de que
     # este activo o no — ver construir_url_panel), asi que este numero
     # sube un poco cada vez que se añade una casa o un deporte nuevo al
-    # catalogo. Reajustado el 2026-08-23 (2ª vez, tras subir
-    # LIMITE_TEXTO_REPORTE de 16 a 28 porque los nombres reales se veian
-    # cortados a la mitad): LIMITE_REPORTES bajo de 13 a 9 para
-    # compensar — peor caso forzado paso de 8032 a 8056 caracteres
-    # (practicamente el mismo margen, ahora con nombres mucho mas
-    # largos en vez de mas reportes). Si este assert vuelve a saltar por
-    # seguir ampliando el catalogo (no por un recorte real quitado),
-    # basta con volver a subir el umbral, no bajar LIMITE_REPORTES/ALIAS.
-    assert len(url) < 8700, f"URL de {len(url)} caracteres — demasiado cerca del limite real de GitHub Pages"
+    # catalogo. Reajustado el 2026-08-23 (3ª vez, al añadir el "id" de
+    # cada discrepancia para poder descartarla y subir LIMITE_REPORTES
+    # de 9 a 10): peor caso forzado ~8612 caracteres. Si este assert
+    # vuelve a saltar por seguir ampliando el catalogo (no por un
+    # recorte real quitado), basta con volver a subir el umbral, no
+    # bajar LIMITE_REPORTES/ALIAS.
+    assert len(url) < 8900, f"URL de {len(url)} caracteres — demasiado cerca del limite real de GitHub Pages"
+
+
+def test_aplicar_cambios_descarta_reportes(tmp_path):
+    """Pedido directo del usuario: poder "eliminar" (descartar, sin
+    perder el historial) las alertas ya revisadas, para llevar un
+    orden."""
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    db.guardar_discrepancia(
+        ruta,
+        Discrepancia(
+            casa_id="bwin",
+            casa_nombre="Bwin",
+            deporte="futbol",
+            liga="LaLiga",
+            equipo_local_casa="A",
+            equipo_visitante_casa="B",
+            detalle_casa="21:00",
+            equipo_local_fs="A",
+            equipo_visitante_fs="B",
+            detalle_fs="19:00",
+            similitud=90.0,
+            prioridad="alta",
+        ),
+    )
+    id_ = db.listar_discrepancias_recientes(ruta)[0]["id"]
+
+    payload = json.dumps({"reportes_descartados": [id_]})
+    resumen, _nueva_hora, _acciones = aplicar_cambios(ruta, payload)
+
+    assert db.listar_discrepancias_recientes(ruta) == []
+    assert "1 alerta" in resumen
 
 
 def test_aplicar_cambios_sin_nada_no_rompe(tmp_path):

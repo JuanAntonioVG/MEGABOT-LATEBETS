@@ -239,6 +239,10 @@
   .report-card { background: var(--bg-card); border-radius: 14px; padding: 12px 14px; border-left: 4px solid var(--baja); }
   .report-card.alta { border-left-color: var(--alta); }
   .report-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--hint); margin-bottom: 8px; }
+  .report-header-right { display: flex; align-items: center; gap: 6px; }
+  .report-dismiss { border: none; background: var(--bg); color: var(--hint); font-size: 0.9rem; padding: 4px 7px; border-radius: 8px; font-family: inherit; line-height: 1; }
+  .report-dismiss.armed { background: var(--alta); color: #fff; }
+  .report-card.descartado { opacity: 0.4; }
   .badge { font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.02em; color: #fff; }
   .badge-alta { background: var(--alta); }
   .badge-baja { background: var(--baja); }
@@ -486,6 +490,7 @@
   const decisionesAlias = {}; // aliasId -> "aprobar" | "rechazar" (pendiente o aprobado, misma forma)
   let aliasNuevos = []; // [{variante, canonico}]
   const accionesArmadas = new Set(); // "ejecutar_ciclo" | "revisar_ollama"
+  const reportesDescartados = new Set(); // ids de discrepancias marcadas para descartar
 
   function textoBotonGuardar() {
     const ej = accionesArmadas.has('ejecutar_ciclo');
@@ -504,7 +509,9 @@
     const hayPausada = pausadaActual !== pausadaInicial;
     const hayAlias = Object.keys(decisionesAlias).length > 0 || aliasNuevos.length > 0;
     const hayAcciones = accionesArmadas.size > 0;
-    const sucio = hayToggles || hayParalelismo || hayHora || hayVerboso || hayPausada || hayAlias || hayAcciones;
+    const hayDescartes = reportesDescartados.size > 0;
+    const sucio =
+      hayToggles || hayParalelismo || hayHora || hayVerboso || hayPausada || hayAlias || hayAcciones || hayDescartes;
     document.body.classList.toggle('dirty', sucio);
     if (tg) {
       if (sucio) { tg.MainButton.enable(); tg.MainButton.setText(textoBotonGuardar()); }
@@ -603,7 +610,10 @@
       card.innerHTML = `
         <div class="report-header">
           <span>${EMOJIS[d.dp] || '❓'} ${Math.round(d.s)}% similitud</span>
-          <span class="badge ${esAlta ? 'badge-alta' : 'badge-baja'}">${esAlta ? 'alta prioridad' : 'baja prioridad'}</span>
+          <div class="report-header-right">
+            <span class="badge ${esAlta ? 'badge-alta' : 'badge-baja'}">${esAlta ? 'alta prioridad' : 'baja prioridad'}</span>
+            <button type="button" class="report-dismiss" data-id="${d.id}" title="Descartar">🗑</button>
+          </div>
         </div>
         <div class="report-side">
           <div class="report-side-label">⭐ Flashscore · ${escapeHtml(d.lf)}</div>
@@ -615,6 +625,27 @@
         </div>
         <div class="report-fecha">${escapeHtml(d.t)}</div>`;
       contReportes.appendChild(card);
+    });
+    // Descartar no borra la tarjeta al momento (asi se puede deshacer
+    // tocando otra vez antes de guardar) — solo la marca visualmente y
+    // la apunta para mandarla en "reportes_descartados" al pulsar
+    // Guardar. El borrado real (ocultarla de la lista) lo hace el
+    // servidor la proxima vez que se abra el panel.
+    contReportes.querySelectorAll('.report-dismiss').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.id);
+        const card = btn.closest('.report-card');
+        if (reportesDescartados.has(id)) {
+          reportesDescartados.delete(id);
+          btn.classList.remove('armed');
+          card.classList.remove('descartado');
+        } else {
+          reportesDescartados.add(id);
+          btn.classList.add('armed');
+          card.classList.add('descartado');
+        }
+        marcarSucio();
+      });
     });
   }
   if (estado.rm) {
@@ -801,6 +832,7 @@
       alias_decisiones,
       alias_nuevos: aliasNuevos,
       acciones: Array.from(accionesArmadas),
+      reportes_descartados: Array.from(reportesDescartados),
     };
     if (tg) {
       tg.sendData(JSON.stringify(payload));

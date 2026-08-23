@@ -45,16 +45,21 @@ URL_BASE_PANEL = "https://juanantoniovg.github.io/MEGABOT-LATEBETS/panel.html"
 # texto completo ni siquiera llega a la pagina — un "toca para
 # expandir" en el cliente no podria enseñar mas de lo que se manda),
 # subirlo de verdad significaba tocar el presupuesto de caracteres, no
-# solo el CSS. Dos cosas lo pagaron:
-# 1. `ef` (nombres de Flashscore) ya no se manda cuando es igual a `ec`
-#    (el caso normal tras el emparejamiento, ver mas abajo) — ahorra
-#    bytes sin perder nada.
-# 2. LIMITE_REPORTES baja de 13 a 9 (de vuelta cerca de las 10
-#    originales) para dejarle sitio a nombres mas largos.
-# Resultado: LIMITE_TEXTO_REPORTE de 16 a 28 (equipos/ligas ya no se
-# cortan en la inmensa mayoria de los casos reales), peor caso forzado
-# ~8056 caracteres — margen parecido al de antes bajo los 9323 reales.
-LIMITE_REPORTES = 9
+# solo el CSS. Lo pagaron `ef` (nombres de Flashscore, ver mas abajo:
+# ya no se manda cuando coincide con `ec`, el caso normal) y bajar
+# LIMITE_REPORTES de 13 a 9. Resultado: LIMITE_TEXTO_REPORTE de 16 a 28
+# (equipos/ligas ya no se cortan en la inmensa mayoria de los casos
+# reales).
+#
+# Reajustados el 2026-08-23 (3ª vez): el usuario tambien pidio poder
+# DESCARTAR alertas ya revisadas (ver `descartar_discrepancia` en
+# core/db.py — no se borran, solo se ocultan de esta lista) y verlas
+# ordenadas por prioridad. Con esa forma de despejar el panel, subir
+# LIMITE_REPORTES de 9 a 10 parecio razonable — el `id` de cada
+# discrepancia (necesario para poder descartarla) tambien se manda
+# ahora, un coste pequeño. Peor caso forzado con todo esto: ~8612
+# caracteres, margen aun claro bajo los 9323 reales.
+LIMITE_REPORTES = 10
 LIMITE_EJECUCIONES = 4
 LIMITE_ALIAS = 6
 
@@ -129,6 +134,7 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
         ec = [_recortar(f["equipo_local_casa"]), _recortar(f["equipo_visitante_casa"])]
         ef = [_recortar(f["equipo_local_fs"]), _recortar(f["equipo_visitante_fs"])]
         reporte = {
+            "id": f["id"],
             "cs": _recortar(f["casa_nombre"]),
             "dp": f["deporte"],
             "lc": _recortar(f["liga"] or "Desconocida"),
@@ -245,6 +251,16 @@ def aplicar_cambios(ruta_db: Path, datos_json: str) -> tuple[str, str | None, li
             creados += 1
     if creados:
         partes.append(f"{creados} alias nuevo(s) añadido(s) a mano")
+
+    # Descartar NO borra la fila (el historial se queda intacto en la
+    # base de datos, por si hace falta revisarlo despues) — solo la
+    # oculta de `listar_discrepancias_recientes`, para que el usuario
+    # pueda ir despejando el panel segun revisa cada alerta.
+    descartadas = cambios.get("reportes_descartados", [])
+    for id_ in descartadas:
+        db.descartar_discrepancia(ruta_db, int(id_))
+    if descartadas:
+        partes.append(f"{len(descartadas)} alerta(s) descartada(s)")
 
     acciones_pedidas = [a for a in cambios.get("acciones", []) if a in ACCIONES_VALIDAS]
     if "ejecutar_ciclo" in acciones_pedidas:
