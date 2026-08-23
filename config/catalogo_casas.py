@@ -113,6 +113,15 @@ CATALOGO_CASAS: dict[str, CasaApuestas] = {
             "futbol": "https://sports.williamhill.es/betting/es-es/f%C3%BAtbol/partidos/competici%C3%B3n/hoy/",
         },
     ),
+    "sportium": CasaApuestas(
+        id="sportium",
+        nombre_legible="Sportium",
+        scraper_id="sportium",
+        deportes={
+            # Solo futbol por ahora, mismo motivo que William Hill.
+            "futbol": "https://www.sportium.es/apuestas/sports/soccer/matches/today",
+        },
+    ),
 }
 
 

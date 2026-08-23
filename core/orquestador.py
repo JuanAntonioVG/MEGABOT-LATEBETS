@@ -33,6 +33,7 @@ from scrapers import betfair as _betfair  # noqa: F401
 from scrapers import bwin as _bwin  # noqa: F401
 from scrapers import flashscore as _flashscore  # noqa: F401
 from scrapers import pokerstars as _pokerstars  # noqa: F401
+from scrapers import sportium as _sportium  # noqa: F401
 from scrapers import williamhill as _williamhill  # noqa: F401
 from scrapers import winamax as _winamax  # noqa: F401
 from scrapers.base import REGISTRO_SCRAPERS

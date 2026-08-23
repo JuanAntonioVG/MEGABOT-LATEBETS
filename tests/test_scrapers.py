@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from scrapers.betfair import BetfairScraper
 from scrapers.flashscore import FlashscoreScraper
+from scrapers.sportium import SportiumScraper
 from scrapers.williamhill import WilliamHillScraper, _es_fecha_de_hoy
 
 
@@ -159,3 +160,39 @@ def test_williamhill_fecha_de_otro_dia_se_descarta():
 def test_williamhill_fecha_no_interpretable_no_descarta_por_las_dudas():
     assert _es_fecha_de_hoy("") is True
     assert _es_fecha_de_hoy("formato totalmente distinto") is True
+
+
+def _html_partido_sportium(con_fecha: bool = True) -> BeautifulSoup:
+    """Reproduce la estructura real: la fecha/hora vive FUERA del <a>
+    con los nombres de equipo, como hermano suyo dentro de la fila
+    ta-EventListItem — no dentro de el."""
+    fecha_html = "<div>Hoy, 17:00</div>" if con_fecha else ""
+    html = f"""
+    <div class="ta-FlexPane ta-EventListItem">
+        {fecha_html}
+        <a class="ta-Button EventListItemDetails ta-EventListItemDetails">
+            <div class="ta-participantName">At. Madrid</div>
+            <div class="ta-participantName">Villarreal</div>
+        </a>
+    </div>
+    """
+    return BeautifulSoup(html, "lxml").select_one("div.ta-EventListItem")
+
+
+def test_sportium_encuentra_la_fecha_fuera_del_enlace():
+    """Bug real detectado en produccion: buscar la fecha DENTRO del <a>
+    de nombres de equipo (en vez de en toda la fila) descartaba el
+    partido entero pese a que los nombres se leian bien — la pagina
+    real da 0 partidos con ese fallo aunque las ligas se expandan
+    correctamente."""
+    elemento = _html_partido_sportium(con_fecha=True)
+    partido = SportiumScraper._parsear_partido(elemento, "LaLiga", "futbol")
+    assert partido is not None
+    assert partido.equipo_local == "At. Madrid"
+    assert partido.equipo_visitante == "Villarreal"
+    assert partido.detalle_estado == "17:00"
+
+
+def test_sportium_sin_fecha_descarta_el_partido():
+    elemento = _html_partido_sportium(con_fecha=False)
+    assert SportiumScraper._parsear_partido(elemento, "LaLiga", "futbol") is None
