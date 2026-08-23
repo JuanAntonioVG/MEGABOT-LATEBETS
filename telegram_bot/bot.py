@@ -47,6 +47,28 @@ from telegram_bot.notificaciones import enviar_error, enviar_resultado, formatea
 logger = logging.getLogger(__name__)
 
 
+def _teclado_panel(url: str) -> ReplyKeyboardMarkup:
+    """El boton de teclado que abre la Mini App. Lleva el estado
+    EMBEBIDO en la URL (pagina estatica, sin backend propio — ver
+    telegram_bot/miniapp.py), asi que es una foto fija: si se reutiliza
+    un boton antiguo (de un mensaje viejo, sin volver a llamar a esta
+    funcion), se abre con los datos de cuando se creo, no con los de
+    ahora — BUG REAL detectado por el usuario el 2026-08-23: guardaba
+    cambios de verdad (la base de datos se actualizaba, la confirmacion
+    "✅ Guardado" lo demuestra) pero al reabrir con el MISMO boton de
+    antes seguia viendo el estado viejo, y parecia que no se habia
+    guardado nada. Arreglado adjuntando un teclado fresco (con una URL
+    nueva, construida en el momento) a la propia confirmacion de
+    guardado en `cb_web_app_data` — Telegram sustituye el teclado
+    visible por el que traiga el ultimo mensaje, asi que el mismo botón
+    que ve el usuario queda apuntando ya al estado recien guardado sin
+    que tenga que acordarse de volver a escribir /panel."""
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton("🖥 Abrir panel", web_app=WebAppInfo(url=url))]],
+        resize_keyboard=True,
+    )
+
+
 async def _editar_seguro(query: CallbackQuery, texto: str, **kwargs) -> None:
     """Como `query.edit_message_text`, pero no revienta si el contenido
     nuevo es identico al que ya se estaba mostrando — ej. el usuario
@@ -204,15 +226,10 @@ def construir_app(settings: Settings) -> Application:
         # menu. Este es el UNICO sitio que de verdad permite guardar —
         # ver el comentario en _configurar_menu para el porque.
         url = miniapp.construir_url_panel(settings.db_path)
-        teclado = ReplyKeyboardMarkup(
-            [[KeyboardButton("🖥 Abrir panel", web_app=WebAppInfo(url=url))]],
-            resize_keyboard=True,
-        )
         await update.effective_message.reply_text(
             "Pulsa el botón de abajo (junto al teclado, no arriba en el mensaje) — "
-            "cambia lo que quieras y pulsa «Guardar» ahí dentro. Si ha pasado tiempo desde "
-            "la última vez, vuelve a usar /panel para que el botón lleve el estado actual.",
-            reply_markup=teclado,
+            "cambia lo que quieras y pulsa «Guardar» ahí dentro.",
+            reply_markup=_teclado_panel(url),
         )
 
     async def cb_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -252,7 +269,15 @@ def construir_app(settings: Settings) -> Application:
                 _revisar_ollama_en_fondo(context.application), name="revisar_ollama_panel"
             )
 
-        await update.effective_message.reply_text(f"✅ Guardado: {resumen}")
+        # Reenviar un teclado fresco (URL nueva, con el estado que se
+        # acaba de guardar) es lo que de verdad arregla el bug de arriba
+        # — el mismo botón visible en el chat queda apuntando ya a los
+        # datos recien guardados, sin que el usuario tenga que acordarse
+        # de escribir /panel otra vez para "refrescarlo".
+        url_fresca = miniapp.construir_url_panel(settings.db_path)
+        await update.effective_message.reply_text(
+            f"✅ Guardado: {resumen}", reply_markup=_teclado_panel(url_fresca)
+        )
 
     @solo_admin
     async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
