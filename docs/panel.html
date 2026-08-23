@@ -594,6 +594,10 @@
   } else {
     estado.r.forEach(d => {
       const esAlta = d.p === 'alta';
+      // "ef" (nombres de Flashscore) solo viaja cuando de verdad
+      // difiere de "ec" (ver construir_url_panel en miniapp.py) — si no
+      // vino, es que son el mismo texto, así que "ec" vale igual.
+      const ef = d.ef || d.ec;
       const card = document.createElement('div');
       card.className = 'report-card ' + (esAlta ? 'alta' : 'baja');
       card.innerHTML = `
@@ -603,7 +607,7 @@
         </div>
         <div class="report-side">
           <div class="report-side-label">⭐ Flashscore · ${escapeHtml(d.lf)}</div>
-          <div><span class="report-time">${escapeHtml(d.hf)}</span><span class="report-teams">${escapeHtml(d.ef[0])} vs ${escapeHtml(d.ef[1])}</span></div>
+          <div><span class="report-time">${escapeHtml(d.hf)}</span><span class="report-teams">${escapeHtml(ef[0])} vs ${escapeHtml(ef[1])}</span></div>
         </div>
         <div class="report-side">
           <div class="report-side-label">🏠 ${escapeHtml(d.cs)} · ${escapeHtml(d.lc)}</div>

@@ -37,13 +37,24 @@ URL_BASE_PANEL = "https://juanantoniovg.github.io/MEGABOT-LATEBETS/panel.html"
 # Los numeros de aqui abajo NO son una estimacion, se han medido
 # repetidas veces contra el peor caso real (ver el test
 # `test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso`).
-# Reajustados el 2026-08-23 al quitar el emoji redundante de cada
-# combinacion casa+deporte (ver el comentario junto a `casas` en
-# `construir_url_panel` mas abajo): eso liberó ~600 caracteres de margen,
-# que se han reinvertido subiendo estos limites (antes 10/5) en vez de
-# dejarlos sin usar — peor caso forzado ahora ~8032 caracteres, todavia
-# con margen claro bajo los 9323 que rompieron de verdad.
-LIMITE_REPORTES = 13
+#
+# Reajustados el 2026-08-23 (2ª vez): el usuario reporto nombres de
+# equipo/liga cortados a la mitad en las alertas — LIMITE_TEXTO_REPORTE
+# estaba en 16, demasiado corto para nombres reales ("Atlético de
+# Madrid" ya son 19). Como el recorte pasa AQUI, en el servidor (el
+# texto completo ni siquiera llega a la pagina — un "toca para
+# expandir" en el cliente no podria enseñar mas de lo que se manda),
+# subirlo de verdad significaba tocar el presupuesto de caracteres, no
+# solo el CSS. Dos cosas lo pagaron:
+# 1. `ef` (nombres de Flashscore) ya no se manda cuando es igual a `ec`
+#    (el caso normal tras el emparejamiento, ver mas abajo) — ahorra
+#    bytes sin perder nada.
+# 2. LIMITE_REPORTES baja de 13 a 9 (de vuelta cerca de las 10
+#    originales) para dejarle sitio a nombres mas largos.
+# Resultado: LIMITE_TEXTO_REPORTE de 16 a 28 (equipos/ligas ya no se
+# cortan en la inmensa mayoria de los casos reales), peor caso forzado
+# ~8056 caracteres — margen parecido al de antes bajo los 9323 reales.
+LIMITE_REPORTES = 9
 LIMITE_EJECUCIONES = 4
 LIMITE_ALIAS = 6
 
@@ -53,7 +64,7 @@ LIMITE_ALIAS = 6
 # (o alguien escribe un alias manual larguisimo). La base de datos
 # guarda el texto completo tal cual; esto solo afecta a lo que se ve en
 # el panel.
-LIMITE_TEXTO_REPORTE = 16
+LIMITE_TEXTO_REPORTE = 28
 
 # Acciones que el panel puede pedir junto con el guardado. Se procesan
 # en telegram_bot/bot.py (no aqui) porque necesitan el Bot/Application
@@ -113,22 +124,31 @@ def construir_url_panel(ruta_db: Path, tab: str = "casas") -> str:
     ]
 
     filas_reportes = db.listar_discrepancias_recientes(ruta_db, limite=LIMITE_REPORTES)
-    reportes = [
-        {
+    reportes = []
+    for f in filas_reportes:
+        ec = [_recortar(f["equipo_local_casa"]), _recortar(f["equipo_visitante_casa"])]
+        ef = [_recortar(f["equipo_local_fs"]), _recortar(f["equipo_visitante_fs"])]
+        reporte = {
             "cs": _recortar(f["casa_nombre"]),
             "dp": f["deporte"],
             "lc": _recortar(f["liga"] or "Desconocida"),
             "lf": _recortar(f["liga_fs"] or "Desconocida"),
             "hc": f["detalle_casa"],
             "hf": f["detalle_fs"],
-            "ec": [_recortar(f["equipo_local_casa"]), _recortar(f["equipo_visitante_casa"])],
-            "ef": [_recortar(f["equipo_local_fs"]), _recortar(f["equipo_visitante_fs"])],
+            "ec": ec,
             "s": f["similitud"],
             "p": f["prioridad"],
             "t": _fecha_compacta(f["creado_en"]),
         }
-        for f in filas_reportes
-    ]
+        # "ef" (nombres de Flashscore) solo se manda si de verdad difiere
+        # de "ec" — tras el emparejamiento (>=70% de similitud) casi
+        # siempre es el mismo texto o casi, y mandarlo siempre duplicaba
+        # bytes sin aportar nada la mayoria de las veces. El panel (ver
+        # docs/panel.html) usa "ec" como valor por defecto cuando "ef"
+        # no viene.
+        if ef != ec:
+            reporte["ef"] = ef
+        reportes.append(reporte)
 
     ejecuciones = [
         {

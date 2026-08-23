@@ -100,6 +100,37 @@ def test_construir_url_panel_incluye_alias_y_reportes(tmp_path):
     assert estado["ej"][0]["er"] == 0
 
 
+def test_construir_url_panel_omite_ef_cuando_coincide_con_ec(tmp_path):
+    """ "ef" (nombres de Flashscore) solo debe viajar en la URL cuando de
+    verdad difiere de "ec" — es el caso normal tras el emparejamiento, y
+    mandarlo siempre duplicaba bytes sin aportar nada. El panel usa "ec"
+    como valor por defecto cuando "ef" no viene (ver docs/panel.html)."""
+    ruta = tmp_path / "test.sqlite3"
+    db.inicializar_db(ruta)
+
+    db.guardar_discrepancia(
+        ruta,
+        Discrepancia(
+            casa_id="bwin",
+            casa_nombre="Bwin",
+            deporte="futbol",
+            liga="LaLiga",
+            liga_fs="LaLiga EA Sports",
+            equipo_local_casa="Real Madrid",
+            equipo_visitante_casa="Barcelona",
+            detalle_casa="21:00",
+            equipo_local_fs="Real Madrid",
+            equipo_visitante_fs="Barcelona",
+            detalle_fs="19:00",
+            similitud=100.0,
+            prioridad="alta",
+        ),
+    )
+
+    estado = json.loads(base64.urlsafe_b64decode(construir_url_panel(ruta).split("estado=", 1)[1]))
+    assert "ef" not in estado["r"][0]
+
+
 def test_aplicar_cambios_toggles_y_ajustes(tmp_path):
     ruta = tmp_path / "test.sqlite3"
     db.inicializar_db(ruta)
@@ -262,6 +293,11 @@ def test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso(tmp_path):
     db.inicializar_db(ruta)
 
     nombre_largo = "Real Club Deportivo Muy Larguísimo De Verdad " * 2
+    # Nombre de Flashscore DISTINTO al de la casa a proposito: "ef" solo
+    # se manda cuando difiere de "ec" (ver construir_url_panel), asi que
+    # con el mismo texto en los dos el peor caso real quedaria
+    # subestimado — esto fuerza a que "ef" SI viaje en la URL.
+    nombre_largo_fs = "Nombre De Flashscore Completamente Distinto XYZ " * 2
 
     for _i in range(LIMITE_REPORTES + 5):
         db.guardar_discrepancia(
@@ -275,8 +311,8 @@ def test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso(tmp_path):
                 equipo_local_casa=nombre_largo,
                 equipo_visitante_casa=nombre_largo,
                 detalle_casa="21:00",
-                equipo_local_fs=nombre_largo,
-                equipo_visitante_fs=nombre_largo,
+                equipo_local_fs=nombre_largo_fs,
+                equipo_visitante_fs=nombre_largo_fs,
                 detalle_fs="19:00",
                 similitud=90.0,
                 prioridad="alta",
@@ -312,13 +348,14 @@ def test_url_panel_no_supera_un_tamano_seguro_ni_en_el_peor_caso(tmp_path):
     # serializa entero en la URL (seccion "c", independientemente de que
     # este activo o no — ver construir_url_panel), asi que este numero
     # sube un poco cada vez que se añade una casa o un deporte nuevo al
-    # catalogo. Reajustado el 2026-08-23: se quito el emoji redundante de
-    # cada combinacion casa+deporte (el cliente ya lo deriva del id) y el
-    # margen liberado se reinvirtio subiendo LIMITE_REPORTES/ALIAS en vez
-    # de dejarlo sin usar — peor caso forzado paso de 7416 a 8032
-    # caracteres. Si este assert vuelve a saltar por seguir ampliando el
-    # catalogo (no por un recorte real quitado), basta con volver a subir
-    # el umbral, no bajar LIMITE_REPORTES/ALIAS.
+    # catalogo. Reajustado el 2026-08-23 (2ª vez, tras subir
+    # LIMITE_TEXTO_REPORTE de 16 a 28 porque los nombres reales se veian
+    # cortados a la mitad): LIMITE_REPORTES bajo de 13 a 9 para
+    # compensar — peor caso forzado paso de 8032 a 8056 caracteres
+    # (practicamente el mismo margen, ahora con nombres mucho mas
+    # largos en vez de mas reportes). Si este assert vuelve a saltar por
+    # seguir ampliando el catalogo (no por un recorte real quitado),
+    # basta con volver a subir el umbral, no bajar LIMITE_REPORTES/ALIAS.
     assert len(url) < 8700, f"URL de {len(url)} caracteres — demasiado cerca del limite real de GitHub Pages"
 
 
