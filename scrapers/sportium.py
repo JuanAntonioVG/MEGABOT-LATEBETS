@@ -36,6 +36,41 @@ Verificado en vivo el 2026-08-23 contra "Fútbol > Partidos > Hoy":
   base (SPA) — un `wait_for_timeout` fijo fallo alguna vez en pruebas
   (0 grupos encontrados); se espera de verdad a que aparezca el primer
   grupo en vez de adivinar cuanto tarda.
+
+BUG REAL detectado en vivo el 2026-08-25 (reportado por el usuario:
+"hay 108 partidos hoy y el bot solo ha cogido 50" — confirmado a mano
+con Ctrl+F contando "hoy" en la pagina real). La causa de fondo NO era
+el click de expandir (esa fue la sospecha inicial, descartada tras
+medir) sino algo anterior: la propia LISTA DE GRUPOS (ligas) tambien
+llega por detras en varias tandas, igual que los partidos de cada
+grupo — el primer grupo puede aparecer mucho antes de que esten todos.
+Con la espera fija que habia antes (500ms tras el primer grupo),
+`n_grupos` se contaba demasiado pronto: en pruebas repetidas contra la
+misma carga, unas veces salian los 34 grupos reales y otras solo 7 — el
+resto (y sus partidos, ni siquiera renderizados todavia en ese
+instante) se perdian enteros sin ningun error. Arreglado esperando a
+que el NUMERO de grupos deje de crecer antes de contarlos (igual que
+`scroll_hasta_estabilizar` en base.py, pero sin scroll — la carga aqui
+es async pura). El margen de "sin cambios" es generoso a proposito (3s)
+porque se detecto una tanda con una pausa real de mas de 1s antes de
+seguir cargando mas grupos; un margen mas corto daba el numero por
+estable antes de tiempo. Verificado en vivo: 34/34 grupos, 108
+partidos, en 5 ejecuciones seguidas (frente a resultados entre 48 y 108
+segun cuando se contara, antes del arreglo).
+
+De paso, el click de expandir en si SI se cambio a JavaScript (mismo
+patron que en Flashscore, `_expandir_ligas_colapsadas` — se salta las
+comprobaciones de "visible/estable/sin animacion" de Playwright, que
+pueden colgarse mas de la cuenta), pero con cuidado: un primer intento
+de reforzarlo aun mas con un REINTENTO (repetir el click si tras
+esperar seguia sin haber partidos) resulto ser peor que el problema
+original — verificado en vivo pulsando dos veces seguidas el mismo
+header en la consola que el boton es un TOGGLE (0 a 3 partidos con el
+primer click, de vuelta a 0 con el segundo), asi que cualquier lectura
+de conteo que llegara un poco antes de que el primer click terminara de
+renderizar disparaba un segundo click que RE-COLAPSABA el grupo (14 y 9
+partidos en pruebas, peor que los 50 originales). Con un solo click y
+sondeando sin volver a tocar el header, sin reintento, es seguro.
 """
 
 from __future__ import annotations
@@ -75,20 +110,76 @@ class SportiumScraper(ScraperBase):
         # (0 grupos) porque unas veces alcanza y otras no. Se espera al
         # primer grupo real en vez de adivinar cuanto tarda.
         await page.wait_for_selector(SELECTOR_GRUPO_LIGA, timeout=20000)
-        await page.wait_for_timeout(500)
+
+        # RAIZ REAL del bug del usuario ("108 partidos hoy, el bot solo
+        # cogio 50"): la LISTA DE GRUPOS (ligas) tambien llega por
+        # detras EN VARIAS TANDAS, no de una vez — el primer grupo puede
+        # aparecer mucho antes de que esten los demas. Verificado en
+        # vivo contando cuantos grupos habia disponibles tras la espera
+        # fija de 500ms que habia antes: unas veces 34 (los de verdad),
+        # otras solo 7 — el resto de grupos (y sus partidos, aun no
+        # renderizados en ese momento) se perdian enteros sin ningun
+        # error, simplemente porque `n_grupos` se contaba demasiado
+        # pronto. Se espera ahora a que el NUMERO de grupos deje de
+        # crecer (igual que `scroll_hasta_estabilizar` en base.py, pero
+        # sin scroll — aqui no hace falta, la carga es async pura) antes
+        # de contar cuantos hay que expandir. Verificado en vivo tras el
+        # arreglo: 34/34 grupos, 108 partidos, en 5 ejecuciones seguidas
+        # (frente a resultados entre 48 y 108 antes, segun cuando se
+        # contara). El margen de espera "sin cambios" es generoso a
+        # proposito (3s) porque se detecto una tanda con una pausa real
+        # de mas de 1s antes de seguir cargando mas grupos — un margen
+        # mas corto daba por estabilizado un numero que en realidad
+        # todavia iba a seguir creciendo.
+        grupos_anterior = -1
+        sin_cambios = 0
+        for _ in range(60):
+            grupos_actual = await page.locator(SELECTOR_GRUPO_LIGA).count()
+            if grupos_actual <= grupos_anterior:
+                sin_cambios += 1
+                if sin_cambios >= 12:
+                    break
+            else:
+                sin_cambios = 0
+            grupos_anterior = grupos_actual
+            await page.wait_for_timeout(250)
 
         n_grupos = await page.locator(SELECTOR_GRUPO_LIGA).count()
         for i in range(min(n_grupos, MAX_GRUPOS_A_EXPANDIR)):
             grupo = page.locator(SELECTOR_GRUPO_LIGA).nth(i)
+            if await grupo.locator(SELECTOR_PARTIDO).count() > 0:
+                continue  # ya tiene partidos cargados, no hace falta expandir
+            header = grupo.locator(SELECTOR_HEADER).first
+            # BUG REAL detectado en vivo el 2026-08-25 (reportado por el
+            # usuario: solo 50 de 108 partidos de hoy): `header.click()`
+            # de Playwright (con sus comprobaciones de que el elemento
+            # este visible/estable/sin animacion antes de pulsar) fallaba
+            # en silencio para una parte de los grupos, y el
+            # `except Exception: continue` se comia el fallo sin dejar
+            # rastro. Mismo sintoma que ya se vio en Flashscore
+            # (`_expandir_ligas_colapsadas`): click por JavaScript, que
+            # se salta esas comprobaciones.
+            #
+            # OJO — intento anterior de arreglo (reintentar el click si
+            # tras esperar seguia sin haber partidos) resulto CONTRAPRODUCENTE
+            # y verificado en vivo que lo era: el boton es un TOGGLE (un
+            # segundo click vuelve a COLAPSAR el grupo, confirmado
+            # pulsando dos veces seguidas sobre el mismo header — de 0 a
+            # 3 partidos con el primer click, de vuelta a 0 con el
+            # segundo). Por eso aqui NO se reintenta con otro click si
+            # parece que no ha funcionado: se hace UN click y se espera
+            # sondeando (sin volver a tocar el header) hasta 2s — mas
+            # que suficiente margen, y sin el riesgo de deshacer un
+            # click que en realidad SI habia funcionado pero iba mas
+            # lento que la espera.
             try:
-                if await grupo.locator(SELECTOR_PARTIDO).count() > 0:
-                    continue  # ya tiene partidos cargados, no hace falta expandir
-                header = grupo.locator(SELECTOR_HEADER).first
-                await header.scroll_into_view_if_needed(timeout=3000)
-                await header.click(timeout=3000)
-                await page.wait_for_timeout(250)
+                await header.evaluate("el => { el.scrollIntoView({block: 'center'}); el.click(); }")
             except Exception:
                 continue
+            for _ in range(10):
+                await page.wait_for_timeout(200)
+                if await grupo.locator(SELECTOR_PARTIDO).count() > 0:
+                    break
 
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
